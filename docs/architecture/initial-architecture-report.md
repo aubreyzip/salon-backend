@@ -6,6 +6,15 @@ This is the initial architecture and initialization evaluation for `salon-backen
 
 The project was then generated with Spring Initializr (commit `9f3df55`), and the result was checked against this report (see "Generated Project Audit" and "Phase 0 Execution Plan" near the end). The short versions of the key decisions are the ADRs in `docs/adr/`. This document holds the full reasoning. Where it disagrees with code written later, the code and newer ADRs win.
 
+**Superseded since this report was written** (current state: `docs/project-status.md`):
+- **Package:** `com.salon`, not the `com.salonapp` placeholder used in §2 and in the Initializr sections.
+- **Module name:** the salon module is `salons` (`com.salon.salons`). Employee management lives there as planned.
+- **Authorization (§6):** branch scopes for receptionists and staff are defined in ADR-0010.
+- **Messaging (§9, "Notifications"):** the after-commit transactional outbox and secrets minted at delivery time are defined in ADR-0011.
+- **Branch opening hours (§5):** moved from the salon module to scheduling (Phase 3).
+- **Districts (ilçe):** stored as text on branches. Only the 81 provinces are seeded reference data.
+- **Salon row lock:** membership changes serialize on a salon row lock (ADR-0002). It is not mentioned in §5.
+
 **Labels used in this report**
 
 | Label | Meaning |

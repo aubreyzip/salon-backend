@@ -2,7 +2,16 @@
 
 Backend REST API for **Salon**, a multi-tenant salon/hairdresser appointment SaaS (initial market: Turkey). It serves separate web and mobile clients.
 
-Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Binding decisions: `docs/adr/`. Read the relevant ADR before changing anything it covers.
+**Start here:** `docs/project-status.md` covers which phases are done, the next phase's scope, open product decisions and known limitations.
+
+Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant ADR before changing anything it covers. Original reasoning and roadmap: `docs/architecture/initial-architecture-report.md`; where it conflicts with an ADR or the code, the ADR or code wins (see the "Superseded" list at its top).
+
+## Workflow
+
+- Work phase by phase as in the roadmap (report §14). Do not start the next phase without the user's go-ahead.
+- Never commit or push unless the user asks.
+- Before reporting work as done, run `./mvnw clean verify` and a randomized-order run (see Testing rules). Report the real counts and failures.
+- When behavior or a decision changes, update the affected ADR, `docs/project-status.md` and this file in the same change. Describe open product questions instead of inventing behavior.
 
 ## Stack
 
@@ -28,8 +37,12 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 - Reference other modules' data by ID only. No JPA associations across modules.
 - Cross-module side effects go through domain events + `@ApplicationModuleListener`. Listeners must be idempotent.
 - `ModularityTests` must stay green. Never weaken it to make a change pass.
-- `shared` holds only small cross-cutting primitives (`BaseEntity`, `Ids`, `ApiException`, error handling, `Clock`). No business logic.
-- Current modules: `shared`, `identity` (accounts, tokens, security config; public `UserDirectory`), `audit` (append-only `AuditLog`), `messaging` (email/SMS gateway ports; logging placeholders until providers are chosen), `salons` (package `com.salon.salons`: tenant salons, branches, staff memberships and roles, invitations, provinces; public `TenantAccess`, `StaffRole`, `SalonPermission`).
+- `shared` holds only small cross-cutting primitives: `BaseEntity`, `Ids`, `ApiException`, `CurrentUserId`, `SecureTokens`, `EmailAddresses`, error handling, `Clock`, paging config. No business logic.
+- Current modules and their public (root-package) APIs:
+  - `identity`: accounts, tokens, security config. Public: `UserDirectory`, `UserSummary`.
+  - `audit`: `AuditLog`, `AuditRecord`.
+  - `messaging`: `EmailGateway`, `SmsGateway` (logging placeholders until providers are chosen).
+  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
 - Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model.
@@ -47,18 +60,18 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 ## Database rules (ADR-0004, ADR-0005, ADR-0006)
 
 - The schema is owned by Flyway. `ddl-auto` stays `validate`.
-- Migration names use timestamps: `V2026_11_02_1200__description.sql`. **Never edit a merged migration.** Add a new one instead.
+- Migrations live in `src/main/resources/db/migration/<module>/`. Names use timestamps: `V2026_11_02_1200__description.sql`. **Never edit a merged migration.** Add a new one instead.
 - Every tenant-owned table has a non-null `salon_id`. Same-tenant references use composite foreign keys.
 - Index every foreign key column. Prefer `CHECK`/`UNIQUE`/exclusion constraints over application-only checks.
 - Moments: `Instant` / `timestamptz`. Local schedules: `LocalTime` + branch IANA `time_zone`. Money: `BigDecimal` / `numeric(12,2)` + currency.
 - Use `Locale.ROOT` for case normalization (Turkish `İ/ı` problem).
 - `spring.jpa.open-in-view` is false: load what you need inside the transaction.
 
-## Security rules (ADR-0002, ADR-0003)
+## Security rules (ADR-0002, ADR-0003, ADR-0010)
 
-- Tenant access is checked through one component before any tenant use case: call `TenantAccess.require(salonId, userId, SalonPermission.X)` (or `requireMember`) first in every salon-scoped service method. Non-members get 404, members without permission 403.
-- Check permissions, never role names. Role → permission mapping and branch scope live in `StaffRole` (ADR-0010).
-- Pick the right `TenantAccess` check:
+- Every salon-scoped service method calls `TenantAccess` before touching tenant data. Non-members get 404 `SALON_NOT_FOUND`, members without permission 403 `INSUFFICIENT_PERMISSION`, branches outside the member's scope 403 `BRANCH_NOT_ASSIGNED`.
+- Check permissions, never role names. Role → permission mapping and branch scope live in `StaffRole`.
+- Pick the right `TenantAccess` check (`requireMember` is for member-wide reads):
   - `require`: salon-level work (settings, branch setup, staff, catalog).
   - `requireInBranch`: branch-specific operational work (appointment books, schedules, clients).
   - `requireForStaffResource`: one staff member's schedule or appointments (`*_ANY` or own via `*_OWN`).
@@ -79,12 +92,11 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 
 - Use PostgreSQL via Testcontainers for anything touching the database. **Never H2.**
 - Integration tests use `@IntegrationTest` (shared context and container, MockMvc, recording email/SMS gateways with `lastCodeSentTo(...)`). Use unique emails and phone numbers per test, since the database is shared.
-- Drive the API with the `TestApi` bean: `signUp`, `makePlatformAdmin`, `createSalon`, `createBranch`, `addMember` (invite + accept), `get/post/put`.
+- Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `get/post/put/perform`.
 - Race tests use `Concurrently.run(...)` and assert on the database state afterwards. Simulate email outages with `RecordingEmailGateway.failDeliveryTo(email)` (always restore it in `finally`).
 - Check database constraints by name with direct SQL (see `SalonDatabaseConstraintsIntegrationTests`).
 - Tests must not depend on execution order. Verify with `-Djunit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$Random -Djunit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random`.
 - Pure domain logic (especially the availability engine) gets plain unit tests without Spring.
-- Every management endpoint gets tenant-isolation tests.
 - Spring Boot 4: use `@MockitoBean` (not `@MockBean`); add `@AutoConfigureMockMvc` for MockMvc in `@SpringBootTest`.
 
 ## Do not add without an explicit decision
