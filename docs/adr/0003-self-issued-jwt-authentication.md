@@ -17,6 +17,12 @@ Web and mobile clients are first-party. The options were: an external identity p
 - Passwords: `DelegatingPasswordEncoder` (bcrypt by default, upgradable).
 - Authorization: platform roles on the user; tenant-scoped roles on `StaffMember` mapped to permissions in code; own-vs-any resource rules.
 
+## Implementation status (Phase 1, 2026-11-03)
+
+Implemented: registration with email verification, login with lockout (5 failures → 15 min), RS256 access tokens (`roles` claim → `ROLE_*` authorities), refresh rotation with family reuse detection, logout, password reset (ends all sessions), phone verification by SMS OTP, platform-admin bootstrap (`salon.identity.bootstrap-platform-admin-email`), audit entries.
+
+Not yet implemented: the web cookie variant of the refresh endpoint (with CSRF protection). Refresh tokens are currently sent in the request body only. Add the cookie variant when the web client starts.
+
 ## Consequences
 
 - We own password reset, OTP, lockout and abuse protection.

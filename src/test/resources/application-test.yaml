@@ -1,0 +1,7 @@
+salon:
+  security:
+    jwt:
+      generate-ephemeral-key: true
+  identity:
+    # Tests request several codes in quick succession; hourly limits still apply.
+    code-resend-interval: PT0S

@@ -15,9 +15,11 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 ## Commands
 
 - Build and all tests: `./mvnw verify` (needs Docker running for Testcontainers)
-- Run locally: `./mvnw spring-boot:run` (starts `compose.yaml` PostgreSQL automatically)
-- Run with a throwaway Testcontainers database instead: run `TestSalonBackendApplication` from the IDE
+- Run locally: `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` (starts `compose.yaml` PostgreSQL automatically). The `local` profile enables a throw-away JWT key and the logging email/SMS placeholders: verification codes appear in the application log.
+- Run with a throwaway Testcontainers database instead: run `TestSalonBackendApplication` from the IDE (also uses `local`)
+- API docs while running: `/swagger-ui.html`, `/v3/api-docs`
 - Windows: use `mvnw.cmd`. `JAVA_HOME` must point to JDK 25.
+- Without the `local` profile, startup fails unless `salon.security.jwt.private-key` / `public-key` (PEM) are set. This is intentional.
 
 ## Module rules (ADR-0001)
 
@@ -26,7 +28,10 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 - Reference other modules' data by ID only. No JPA associations across modules.
 - Cross-module side effects go through domain events + `@ApplicationModuleListener`. Listeners must be idempotent.
 - `ModularityTests` must stay green. Never weaken it to make a change pass.
-- `shared` holds only small cross-cutting primitives (Money, IDs, error model, security helpers). No business logic.
+- `shared` holds only small cross-cutting primitives (`BaseEntity`, `Ids`, `ApiException`, error handling, `Clock`). No business logic.
+- Current modules: `shared`, `identity` (accounts, tokens, security config), `audit` (append-only `AuditLog`), `messaging` (email/SMS gateway ports; logging placeholders until providers are chosen).
+- Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
+- Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
 - Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model.
 
 ## API conventions
@@ -56,6 +61,7 @@ Architecture reasoning: `docs/architecture/initial-architecture-report.md`. Bind
 ## Testing rules
 
 - Use PostgreSQL via Testcontainers for anything touching the database. **Never H2.**
+- Integration tests use `@IntegrationTest` (shared context and container, MockMvc, recording email/SMS gateways with `lastCodeSentTo(...)`). Use unique emails and phone numbers per test, since the database is shared.
 - Pure domain logic (especially the availability engine) gets plain unit tests without Spring.
 - Every management endpoint gets tenant-isolation tests.
 - Spring Boot 4: use `@MockitoBean` (not `@MockBean`); add `@AutoConfigureMockMvc` for MockMvc in `@SpringBootTest`.

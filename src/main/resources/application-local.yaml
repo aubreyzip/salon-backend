@@ -1,0 +1,16 @@
+# Local development only. Activate with: ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+salon:
+  security:
+    jwt:
+      # Throw-away signing key: tokens stop working after a restart.
+      generate-ephemeral-key: true
+    cors:
+      allowed-origins:
+        - http://localhost:3000
+        - http://localhost:5173
+  messaging:
+    # Logging placeholders: verification codes appear in the application log.
+    email:
+      provider: log
+    sms:
+      provider: log
