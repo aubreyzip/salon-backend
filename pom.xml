@@ -11,8 +11,8 @@
 	<groupId>com.salon</groupId>
 	<artifactId>salon-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>salon-backend</name>
+	<description>Salon appointment and salon management platform - backend API</description>
 	<url/>
 	<licenses>
 		<license/>
