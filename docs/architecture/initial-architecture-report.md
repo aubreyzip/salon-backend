@@ -716,11 +716,11 @@ Maven is supplied by `mvnw`.
 
 | # | Decision | Recommended default |
 |---|---|---|
-| D1 | **Group ID / base package / company domain** | `com.salonapp` placeholder. Replace it with a domain you own **before generation** |
-| D2 | Auth approach | Self-issued JWT + rotating refresh tokens; no external IdP |
-| D3 | Customer login | Email + password; verified phone required before first booking; phone-OTP login later |
-| D4 | Tenant shape | Salon (tenant) → Branches from day one; single-branch salons simply have one branch |
-| D5 | Booking confirmation | Per-branch `auto_confirm`, default **true** |
+| D1 | **Group ID / base package / company domain** | `com.salonapp` placeholder. Replace it with a domain you own **before generation**. **Decided: `com.salon`** |
+| D2 | Auth approach | Self-issued JWT + rotating refresh tokens; no external IdP. **Accepted → ADR-0003** |
+| D3 | Customer login | Email + password; verified phone required before first booking; phone-OTP login later. **Accepted → ADR-0007** |
+| D4 | Tenant shape | Salon (tenant) → Branches from day one; single-branch salons simply have one branch. **Accepted → ADR-0008** |
+| D5 | Booking confirmation | Per-branch `auto_confirm`, default **true**. **Accepted → ADR-0009** |
 | D6 | Multi-service bookings | Supported in the data model from v1 (one staff member per appointment) |
 | D7 | "Any available staff" | Engine supports it; UI in phase 2 |
 | D8 | Walk-in and phone bookings by salon | Supported via `salon_client` (no customer account needed) |

@@ -1,6 +1,6 @@
 # ADR-0003: Self-issued JWT access tokens with rotating refresh tokens
 
-- Status: Accepted
+- Status: Accepted (product decision D2, confirmed 2026-11-02)
 - Date: 2026-11-02
 
 ## Context
