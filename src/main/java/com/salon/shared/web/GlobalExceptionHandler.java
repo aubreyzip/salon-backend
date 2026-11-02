@@ -7,6 +7,7 @@ import com.salon.shared.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -39,6 +40,12 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 	ProblemDetail handleOptimisticLocking(ObjectOptimisticLockingFailureException exception) {
 		return problem(HttpStatus.CONFLICT, "CONCURRENT_MODIFICATION",
 				"The resource was modified concurrently. Please retry.");
+	}
+
+	/** Unknown property in a {@code sort} request parameter. */
+	@ExceptionHandler(PropertyReferenceException.class)
+	ProblemDetail handleInvalidSort(PropertyReferenceException exception) {
+		return problem(HttpStatus.BAD_REQUEST, "INVALID_SORT", "Cannot sort by '" + exception.getPropertyName() + "'.");
 	}
 
 	/** Unique or foreign-key violations that slipped past application checks (e.g. concurrent requests). */

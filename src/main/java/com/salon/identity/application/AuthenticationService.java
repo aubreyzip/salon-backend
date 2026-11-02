@@ -5,15 +5,15 @@ import java.time.Instant;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
-import com.salon.identity.domain.EmailAddresses;
 import com.salon.identity.domain.RefreshToken;
 import com.salon.identity.domain.RefreshTokenRepository;
 import com.salon.identity.domain.RevokeReason;
-import com.salon.identity.domain.SecureTokens;
 import com.salon.identity.domain.UserAccount;
 import com.salon.identity.domain.UserAccountRepository;
 import com.salon.shared.ApiException;
+import com.salon.shared.EmailAddresses;
 import com.salon.shared.Ids;
+import com.salon.shared.SecureTokens;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,7 +56,7 @@ public class AuthenticationService {
 		this.auditLog = auditLog;
 		this.properties = properties;
 		this.clock = clock;
-		this.dummyPasswordHash = passwordEncoder.encode(SecureTokens.newRefreshToken());
+		this.dummyPasswordHash = passwordEncoder.encode(SecureTokens.newUrlSafeToken());
 	}
 
 	public AuthTokens login(String email, String password) {

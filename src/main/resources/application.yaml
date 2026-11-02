@@ -1,6 +1,10 @@
 spring:
   application:
     name: salon-backend
+  data:
+    web:
+      pageable:
+        max-page-size: 100
   jpa:
     open-in-view: false
     hibernate:

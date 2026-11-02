@@ -4,9 +4,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.salon.shared.BaseEntity;
+import com.salon.shared.SecureTokens;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.Table;
 
 /**

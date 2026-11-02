@@ -4,13 +4,12 @@ import java.util.UUID;
 
 import com.salon.identity.application.ProfileService;
 import com.salon.identity.application.UserProfile;
+import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,24 +31,20 @@ class MeController {
 	}
 
 	@GetMapping
-	UserProfile me(@AuthenticationPrincipal Jwt jwt) {
-		return profiles.get(userId(jwt));
+	UserProfile me(@CurrentUserId UUID userId) {
+		return profiles.get(userId);
 	}
 
 	@PostMapping("/phone")
 	@ResponseStatus(HttpStatus.ACCEPTED)
-	void requestPhoneVerification(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody PhoneRequest request) {
-		profiles.requestPhoneVerification(userId(jwt), request.phone());
+	void requestPhoneVerification(@CurrentUserId UUID userId, @Valid @RequestBody PhoneRequest request) {
+		profiles.requestPhoneVerification(userId, request.phone());
 	}
 
 	@PostMapping("/phone/verify")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void confirmPhone(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody CodeRequest request) {
-		profiles.confirmPhone(userId(jwt), request.code());
-	}
-
-	private static UUID userId(Jwt jwt) {
-		return UUID.fromString(jwt.getSubject());
+	void confirmPhone(@CurrentUserId UUID userId, @Valid @RequestBody CodeRequest request) {
+		profiles.confirmPhone(userId, request.code());
 	}
 
 	record PhoneRequest(@NotBlank @Size(max = 32) String phone) {

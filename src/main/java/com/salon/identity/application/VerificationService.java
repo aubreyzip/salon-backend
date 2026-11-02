@@ -8,7 +8,6 @@ import java.util.UUID;
 
 import com.salon.identity.domain.ChallengeChannel;
 import com.salon.identity.domain.ChallengePurpose;
-import com.salon.identity.domain.SecureTokens;
 import com.salon.identity.domain.UserAccount;
 import com.salon.identity.domain.VerificationChallenge;
 import com.salon.identity.domain.VerificationChallengeRepository;
@@ -17,6 +16,7 @@ import com.salon.messaging.EmailMessage;
 import com.salon.messaging.SmsGateway;
 import com.salon.messaging.SmsMessage;
 import com.salon.shared.ApiException;
+import com.salon.shared.SecureTokens;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;

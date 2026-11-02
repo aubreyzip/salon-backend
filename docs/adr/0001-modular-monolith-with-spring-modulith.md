@@ -18,6 +18,8 @@ Salon is a new multi-tenant SaaS with an evolving domain (identity, salons and b
 
 Initial modules: `identity`, `salon` (tenant, branches, staff/membership), `catalog`, `scheduling`, `booking`, `customer`, `review`, `discovery` (read-only), `billing`, `notification`, `media`, `audit`, `messaging`, `shared` (kept small).
 
+The salon module's package is `com.salon.salons` (plural, to avoid `com.salon.salon`).
+
 `messaging` (added in Phase 1) contains only channel gateways (`EmailGateway`, `SmsGateway`, later push) and depends on no business module. `identity` uses it directly to send one-time codes synchronously. `notification` will use it for event-driven messages. Keeping the channels separate avoids an `identity` ↔ `notification` dependency cycle.
 
 ## Consequences

@@ -8,9 +8,9 @@ import com.salon.identity.domain.PlatformRole;
 import com.salon.identity.domain.RefreshToken;
 import com.salon.identity.domain.RefreshTokenRepository;
 import com.salon.identity.domain.RevokeReason;
-import com.salon.identity.domain.SecureTokens;
 import com.salon.identity.domain.UserAccount;
 import com.salon.shared.Ids;
+import com.salon.shared.SecureTokens;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -56,7 +56,7 @@ class TokenService {
 		JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(properties.keyId()).build();
 		String accessToken = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
 
-		String refreshToken = SecureTokens.newRefreshToken();
+		String refreshToken = SecureTokens.newUrlSafeToken();
 		Instant refreshExpiresAt = now.plus(properties.refreshTokenTtl());
 		refreshTokens.save(new RefreshToken(user.getId(), familyId, SecureTokens.sha256(refreshToken), now,
 				refreshExpiresAt));

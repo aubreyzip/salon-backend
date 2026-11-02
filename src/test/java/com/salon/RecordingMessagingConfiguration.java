@@ -2,6 +2,8 @@ package com.salon;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,9 +45,23 @@ public class RecordingMessagingConfiguration {
 
 		private final List<EmailMessage> sent = new CopyOnWriteArrayList<>();
 
+		private final Set<String> failingRecipients = ConcurrentHashMap.newKeySet();
+
 		@Override
 		public void send(EmailMessage message) {
+			if (failingRecipients.contains(message.to())) {
+				throw new IllegalStateException("Simulated email provider failure for " + message.to());
+			}
 			sent.add(message);
+		}
+
+		/** Makes sends to this (normalized) address fail until {@link #restoreDeliveryTo} is called. */
+		public void failDeliveryTo(String to) {
+			failingRecipients.add(to);
+		}
+
+		public void restoreDeliveryTo(String to) {
+			failingRecipients.remove(to);
 		}
 
 		public List<EmailMessage> sentTo(String to) {

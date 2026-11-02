@@ -4,9 +4,9 @@ import java.time.Clock;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
-import com.salon.identity.domain.EmailAddresses;
 import com.salon.identity.domain.PlatformRole;
 import com.salon.identity.domain.UserAccountRepository;
+import com.salon.shared.EmailAddresses;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;

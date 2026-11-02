@@ -12,8 +12,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * Full application context against PostgreSQL in Testcontainers, with MockMvc and recording
- * email/SMS gateways. All tests using it share one cached context and database container.
+ * Full application context against PostgreSQL in Testcontainers, with MockMvc, recording
+ * email/SMS gateways and the {@link TestApi} client. All tests using it share one cached context
+ * and database container.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
@@ -21,7 +22,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import({ TestcontainersConfiguration.class, RecordingMessagingConfiguration.class })
+@Import({ TestcontainersConfiguration.class, RecordingMessagingConfiguration.class, TestApiConfiguration.class })
 public @interface IntegrationTest {
 
 }

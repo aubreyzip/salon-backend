@@ -1,4 +1,4 @@
-package com.salon.identity.domain;
+package com.salon.shared;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -9,7 +9,8 @@ import java.util.HexFormat;
 import java.util.UUID;
 
 /**
- * Generation and hashing of secrets that are stored only as hashes (refresh tokens, one-time codes).
+ * Generation and hashing of secrets that are stored only as hashes (refresh tokens, invitation tokens,
+ * one-time codes).
  */
 public final class SecureTokens {
 
@@ -18,8 +19,8 @@ public final class SecureTokens {
 	private SecureTokens() {
 	}
 
-	/** A 256-bit random, URL-safe token. */
-	public static String newRefreshToken() {
+	/** A 256-bit random, URL-safe token (refresh tokens, invitation tokens). */
+	public static String newUrlSafeToken() {
 		byte[] bytes = new byte[32];
 		RANDOM.nextBytes(bytes);
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);

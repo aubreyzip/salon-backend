@@ -18,6 +18,15 @@ The tenant is a salon business (which may have several branches). The product is
 
 Rejected: database per tenant and schema per tenant. Both mean migration fan-out across thousands of tenants and make cross-tenant marketplace reads difficult.
 
+## Implementation status (Phase 2, 2026-11-03)
+
+- `TenantAccess` (module `salons`) is the gate. `staff_member` is the membership table (one active membership per user and salon).
+- Composite keys exist for `branch`, `staff_member`, `staff_branch` and `staff_invitation`. `TenantConstraintsIntegrationTests` proves the database rejects a cross-salon staff/branch assignment even when application checks are bypassed.
+- `TenantIsolationIntegrationTests` runs every salon management endpoint as owner, manager, stylist, owner of another salon, and anonymous.
+- Platform admins do not get implicit tenant access. They use `/api/v1/admin/**` endpoints, which are audited.
+- Salon-wide invariants are protected by a row lock on the salon (`SELECT … FOR UPDATE`). Every membership change locks it before checking access, so changes in one salon are serialized. This fixed a race in which two owners demoting each other at the same time could leave a salon with no owner (`OwnershipConcurrencyIntegrationTests`). Access is checked before the suspension status, so outsiders cannot learn that a salon is suspended.
+- Branch-level scope on top of tenant access: ADR-0010.
+
 ## Consequences
 
 - Cross-tenant data leakage is the main risk. It is mitigated by explicit tenant parameters, database constraints and tests, not by hidden filters.
