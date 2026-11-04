@@ -77,6 +77,24 @@ class TenantIsolationIntegrationTests {
 			{"displayName": "New Stylist", "role": "STAFF", "bookable": true}
 			""";
 
+	/** Keeps {staff} assigned to {branch}, which working hours there require. */
+	private static final String STAFF_IN_BRANCH_JSON = """
+			{"displayName": "New Stylist", "role": "STAFF", "bookable": true, "branchIds": ["{branch}"]}
+			""";
+
+	private static final String HOURS_JSON = """
+			{"periods": [{"effectiveFrom": "2026-01-01",
+			              "intervals": [{"dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "17:00"}]}]}
+			""";
+
+	private static final String OPENING_HOURS_JSON = """
+			{"intervals": [{"dayOfWeek": "MONDAY", "startTime": "09:00", "endTime": "18:00"}]}
+			""";
+
+	private static final String TIME_OFF_JSON = """
+			{"startAt": "2030-01-07T09:00:00+03:00", "endAt": "2030-01-07T12:00:00+03:00"}
+			""";
+
 	@Autowired
 	TestApi api;
 
@@ -85,6 +103,12 @@ class TenantIsolationIntegrationTests {
 	private UUID branchA;
 
 	private UUID unlinkedStaffA;
+
+	private UUID serviceA;
+
+	private UUID sectionA;
+
+	private String ownerToken;
 
 	private UUID salonB;
 
@@ -103,8 +127,12 @@ class TenantIsolationIntegrationTests {
 		api.addMember(owner, salonA, "MANAGER", manager);
 		api.addMember(owner, salonA, "RECEPTIONIST", receptionist);
 		api.addMember(owner, salonA, "STAFF", stylist);
-		unlinkedStaffA = UUID.fromString(TestApi.read(
-				api.post(owner.accessToken(), "/api/v1/salons/" + salonA + "/staff", STAFF_JSON), "$.id"));
+		unlinkedStaffA = UUID.fromString(TestApi.read(api.post(owner.accessToken(), "/api/v1/salons/" + salonA
+				+ "/staff", STAFF_IN_BRANCH_JSON.replace("{branch}", branchA.toString())), "$.id"));
+		serviceA = api.createService(owner, salonA, "Cut", 30);
+		sectionA = UUID.fromString(TestApi.read(api.post(owner.accessToken(), "/api/v1/salons/" + salonA
+				+ "/service-sections", "{\"name\": \"Saç\"}"), "$.id"));
+		ownerToken = owner.accessToken();
 
 		salonB = api.createSalon(outsider, "Tenant B");
 		api.createBranch(outsider, salonB);
@@ -129,14 +157,107 @@ class TenantIsolationIntegrationTests {
 						404, 401),
 				new Endpoint(HttpMethod.GET, "/salons/{salon}/staff", null, 200, 200, 200, 200, 404, 401),
 				new Endpoint(HttpMethod.POST, "/salons/{salon}/staff", STAFF_JSON, 201, 201, 403, 403, 404, 401),
-				new Endpoint(HttpMethod.PUT, "/salons/{salon}/staff/{staff}", STAFF_JSON, 200, 200, 403, 403, 404,
-						401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/staff/{staff}", STAFF_IN_BRANCH_JSON, 200, 200, 403,
+						403, 404, 401),
 				new Endpoint(HttpMethod.POST, "/salons/{salon}/staff/{staff}/invitations",
 						"{\"email\": \"new-stylist@example.com\"}", 202, 202, 403, 403, 404, 401),
 				new Endpoint(HttpMethod.DELETE, "/salons/{salon}/staff/{staff}/invitations", null, 204, 204, 403, 403,
 						404, 401),
 				new Endpoint(HttpMethod.POST, "/salons/{salon}/staff/{staff}/reactivate", null, 200, 200, 403, 403,
-						404, 401));
+						404, 401),
+				// Catalog (CATALOG_MANAGE to change, any member to read)
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/services", null, 200, 200, 200, 200, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/services", TestApi.serviceJson("Extra", 30), 201, 201,
+						403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/services/{service}", null, 200, 200, 200, 200, 404,
+						401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/services/{service}", TestApi.serviceJson("Cut", 30), 200,
+						200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/services/{service}/archive", null, 200, 200, 403, 403,
+						404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/services/{service}/restore", null, 200, 200, 403, 403,
+						404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/services/{service}/branches/{branch}", "{}", 200, 200,
+						403, 403, 404, 401),
+				new Endpoint(HttpMethod.DELETE, "/salons/{salon}/services/{service}/branches/{branch}", null, 200,
+						200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/service-sections", null, 200, 200, 200, 200, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/service-sections", "{\"name\": \"Extra\"}", 201, 201,
+						403, 403, 404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/service-sections/{section}", "{\"name\": \"Saç\"}", 200,
+						200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/staff/{staff}/skills", null, 200, 200, 200, 200, 404,
+						401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/staff/{staff}/skills",
+						"{\"skills\": [{\"serviceId\": \"{service}\"}]}", 200, 200, 403, 403, 404, 401),
+				// Branch calendar (BRANCH_MANAGE to change, any member to read)
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/branches/{branch}/opening-hours", null, 200, 200, 200,
+						200, 404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/branches/{branch}/opening-hours", OPENING_HOURS_JSON,
+						200, 200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/branches/{branch}/special-days", null, 200, 200, 200,
+						200, 404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/branches/{branch}/special-days/2030-01-01",
+						"{\"intervals\": []}", 200, 200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.DELETE, "/salons/{salon}/branches/{branch}/special-days/2030-01-01", null, 204,
+						204, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/branches/{branch}/closures", null, 200, 200, 200, 200,
+						404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/branches/{branch}/closures",
+						"{\"startDate\": \"2030-01-01\", \"endDate\": \"2030-01-02\"}", 201, 201, 403, 403, 404, 401),
+				// Staff schedules ({staff} is not the stylist: SCHEDULE_MANAGE_OWN does not apply)
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/staff/{staff}/working-hours", null, 200, 200, 200, 200,
+						404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/staff/{staff}/branches/{branch}/working-hours",
+						HOURS_JSON, 200, 200, 403, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/staff/{staff}/time-off", null, 200, 200, 403, 403, 404,
+						401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/staff/{staff}/time-off", TIME_OFF_JSON, 201, 201, 403,
+						403, 404, 401));
+	}
+
+	/** Endpoints that delete one resource by id: a fresh resource per call, created by the owner. */
+	enum DeleteEndpoint {
+
+		SECTION("/salons/{salon}/service-sections", "{\"name\": \"Temporary\"}", "/salons/{salon}/service-sections/"),
+		CLOSURE("/salons/{salon}/branches/{branch}/closures",
+				"{\"startDate\": \"2030-02-01\", \"endDate\": \"2030-02-01\"}",
+				"/salons/{salon}/branches/{branch}/closures/"),
+		TIME_OFF("/salons/{salon}/staff/{staff}/time-off", TIME_OFF_JSON, "/salons/{salon}/staff/{staff}/time-off/");
+
+		final String createPath;
+
+		final String createBody;
+
+		final String deletePathPrefix;
+
+		DeleteEndpoint(String createPath, String createBody, String deletePathPrefix) {
+			this.createPath = createPath;
+			this.createBody = createBody;
+			this.deletePathPrefix = deletePathPrefix;
+		}
+
+	}
+
+	Stream<Arguments> deletesByCaller() {
+		return Stream.of(DeleteEndpoint.values())
+			.flatMap(endpoint -> Stream.of(Caller.values())
+				.map(caller -> Arguments.argumentSet("DELETE " + endpoint + " as " + caller, endpoint, caller)));
+	}
+
+	@ParameterizedTest
+	@MethodSource("deletesByCaller")
+	void deletesAreLimitedToMembersWithPermission(DeleteEndpoint endpoint, Caller caller) throws Exception {
+		String id = TestApi.read(api.post(ownerToken, resolve(endpoint.createPath), resolve(endpoint.createBody))
+			.andExpect(status().isCreated()), "$.id");
+		int expected = switch (caller) {
+			case OWNER, MANAGER -> 204;
+			case RECEPTIONIST, STYLIST -> 403;
+			case OUTSIDER -> 404;
+			case ANONYMOUS -> 401;
+		};
+
+		api.delete(tokens.get(caller), resolve(endpoint.deletePathPrefix) + id).andExpect(status().is(expected));
 	}
 
 	Stream<Arguments> endpointsByCaller() {
@@ -147,7 +268,7 @@ class TenantIsolationIntegrationTests {
 	@ParameterizedTest
 	@MethodSource("endpointsByCaller")
 	void accessIsLimitedToMembersWithPermission(Endpoint endpoint, Caller caller) throws Exception {
-		api.perform(endpoint.method(), tokens.get(caller), resolve(endpoint.path()), endpoint.body())
+		api.perform(endpoint.method(), tokens.get(caller), resolve(endpoint.path()), resolve(endpoint.body()))
 			.andExpect(status().is(endpoint.expectedFor(caller)));
 	}
 
@@ -191,6 +312,33 @@ class TenantIsolationIntegrationTests {
 			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.code").value("STAFF_NOT_FOUND"));
 		api.post(outsider, ownSalon + "/staff/" + unlinkedStaffA + "/deactivate", null)
+			.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void catalogAndScheduleIdsOfAnotherSalonAreNotFoundThroughTheOutsidersOwnSalon() throws Exception {
+		String outsider = tokens.get(Caller.OUTSIDER);
+		String ownSalon = "/api/v1/salons/" + salonB;
+
+		api.get(outsider, ownSalon + "/services/" + serviceA)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("SERVICE_NOT_FOUND"));
+		api.put(outsider, ownSalon + "/services/" + serviceA, TestApi.serviceJson("Hijack", 30))
+			.andExpect(status().isNotFound());
+		api.put(outsider, ownSalon + "/service-sections/" + sectionA, "{\"name\": \"Hijack\"}")
+			.andExpect(jsonPath("$.code").value("SERVICE_SECTION_NOT_FOUND"));
+		api.put(outsider, ownSalon + "/branches/" + branchA + "/opening-hours", OPENING_HOURS_JSON)
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("BRANCH_NOT_FOUND"));
+		api.get(outsider, ownSalon + "/branches/" + branchA + "/closures")
+			.andExpect(jsonPath("$.code").value("BRANCH_NOT_FOUND"));
+		api.put(outsider, ownSalon + "/staff/" + unlinkedStaffA + "/skills", "{\"skills\": []}")
+			.andExpect(jsonPath("$.code").value("STAFF_NOT_FOUND"));
+		api.get(outsider, ownSalon + "/staff/" + unlinkedStaffA + "/working-hours")
+			.andExpect(jsonPath("$.code").value("STAFF_NOT_FOUND"));
+		api.get(outsider, ownSalon + "/staff/" + unlinkedStaffA + "/time-off")
+			.andExpect(jsonPath("$.code").value("STAFF_NOT_FOUND"));
+		api.post(outsider, ownSalon + "/staff/" + unlinkedStaffA + "/time-off", TIME_OFF_JSON)
 			.andExpect(status().isNotFound());
 	}
 
@@ -239,10 +387,17 @@ class TenantIsolationIntegrationTests {
 			.andExpect(jsonPath("$.code").value("SALON_SUSPENDED"));
 	}
 
-	private String resolve(String path) {
-		return "/api/v1" + path.replace("{salon}", salonA.toString())
+	/** Replaces the placeholders; paths (starting with "/") also get the API prefix. */
+	private String resolve(String pathOrBody) {
+		if (pathOrBody == null) {
+			return null;
+		}
+		String resolved = pathOrBody.replace("{salon}", salonA.toString())
 			.replace("{branch}", branchA.toString())
-			.replace("{staff}", unlinkedStaffA.toString());
+			.replace("{staff}", unlinkedStaffA.toString())
+			.replace("{service}", serviceA.toString())
+			.replace("{section}", sectionA.toString());
+		return resolved.startsWith("/") ? "/api/v1" + resolved : resolved;
 	}
 
 }

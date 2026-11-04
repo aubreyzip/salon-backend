@@ -42,7 +42,10 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `identity`: accounts, tokens, security config. Public: `UserDirectory`, `UserSummary`.
   - `audit`: `AuditLog`, `AuditRecord`.
   - `messaging`: `EmailGateway`, `SmsGateway` (logging placeholders until providers are chosen).
-  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`.
+  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules), `BranchInfo`, `StaffInfo`.
+  - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
+  - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). No public API yet.
+- Dependencies: `salons ← catalog ← scheduling`. `salons` must not depend on either.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
 - Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model.
@@ -74,12 +77,15 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Pick the right `TenantAccess` check (`requireMember` is for member-wide reads):
   - `require`: salon-level work (settings, branch setup, staff, catalog).
   - `requireInBranch`: branch-specific operational work (appointment books, schedules, clients).
-  - `requireForStaffResource`: one staff member's schedule or appointments (`*_ANY` or own via `*_OWN`).
+  - `requireForStaffResource`: one staff member's schedule or appointments in a branch (`*_ANY` or own via `*_OWN`).
+  - `requireForStaffMember`: one staff member's resource without a branch, e.g. time off (`*_ANY` or own via `*_OWN`; branch-scoped members need a shared branch).
   - Filter lists with `SalonMembership.branchRestriction()`.
   - Branch assignments never grant permissions.
 - Load tenant data by `(id, salonId)` (e.g. `findByIdAndSalonId`), never by id alone. Other tenants' resources return 404.
 - New salon-scoped endpoints must be added to `TenantIsolationIntegrationTests`.
-- Membership changes (staff create/update/deactivate/invite, invitation acceptance) first lock the salon row (`SalonRepository.findByIdForUpdate`), then check access, then `ensureModifiable()`. The lock prevents races such as two owners demoting each other at once; checking access before `ensureModifiable()` keeps a salon's suspension hidden from outsiders. Follow the same pattern for any future salon-wide invariant.
+- Membership changes (staff create/update/deactivate/invite, invitation acceptance) first lock the salon row (`SalonRepository.findByIdForUpdate`), then check access, then `ensureModifiable()`. The lock prevents races such as two owners demoting each other at once; checking access before `ensureModifiable()` keeps a salon's suspension hidden from outsiders. Follow the same pattern for any future salon-wide invariant. Other modules use `SalonDirectory.lockSalon` / `ensureModifiable` (e.g. working hours: no overlap across branches).
+- Every change to salon-scoped data in other modules calls `SalonDirectory.ensureModifiable` (suspended salons are read-only).
+- Public (customer) endpoints load branches with `SalonDirectory.findPublicBranch`: only active branches of `ACTIVE` salons; everything else is `404 BRANCH_NOT_FOUND`.
 - Never log tokens, passwords, OTPs, or unmasked phone numbers or emails (KVKK).
 - No secrets in the repository. Configuration comes from environment variables. `.env` is git-ignored.
 
@@ -92,7 +98,9 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 
 - Use PostgreSQL via Testcontainers for anything touching the database. **Never H2.**
 - Integration tests use `@IntegrationTest` (shared context and container, MockMvc, recording email/SMS gateways with `lastCodeSentTo(...)`). Use unique emails and phone numbers per test, since the database is shared.
-- Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `get/post/put/perform`.
+- Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `approveSalon` (makes it `ACTIVE`/public), `createService`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `get/post/put/delete/perform`.
+- `TenantIsolationIntegrationTests` resolves `{salon}`, `{branch}`, `{staff}`, `{service}` and `{section}` in paths and bodies. Matrix cases must be idempotent; deletes by id go in `deletesAreLimitedToMembersWithPermission`.
+- Availability tests: use dates a few days ahead (default policy: 60 minutes notice, 60 days advance). The engine itself is tested without Spring (`AvailabilityEngineTest`, including DST cases with `Europe/Berlin`).
 - Race tests use `Concurrently.run(...)` and assert on the database state afterwards. Simulate email outages with `RecordingEmailGateway.failDeliveryTo(email)` (always restore it in `finally`).
 - Check database constraints by name with direct SQL (see `SalonDatabaseConstraintsIntegrationTests`).
 - Tests must not depend on execution order. Verify with `-Djunit.jupiter.testclass.order.default=org.junit.jupiter.api.ClassOrderer$Random -Djunit.jupiter.testmethod.order.default=org.junit.jupiter.api.MethodOrderer$Random`.

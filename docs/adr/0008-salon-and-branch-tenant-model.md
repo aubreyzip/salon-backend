@@ -27,9 +27,9 @@ Implemented in module `salons`:
 - Branch assignments limit where receptionists and staff work (ADR-0010).
 
 Deferred:
-- Branch opening hours move to the scheduling phase, together with staff working hours.
 - Districts are free text until an official district list is imported as reference data.
-- Services and their per-branch and per-staff overrides belong to the catalog phase.
+
+Implemented in Phase 3 (ADR-0012): branch opening hours, special days and closures (module `scheduling`); services with per-branch offerings and staff skills (module `catalog`). Inactive branches can be configured but are not public.
 
 ## Consequences
 

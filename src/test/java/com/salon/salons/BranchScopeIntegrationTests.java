@@ -118,6 +118,31 @@ class BranchScopeIntegrationTests {
 				stylist.id(), SalonPermission.APPOINTMENT_VIEW_ANY, SalonPermission.APPOINTMENT_VIEW_OWN));
 	}
 
+	/** Staff resources without a branch (e.g. time off): scope means "works in one of my branches". */
+	@Test
+	void staffMemberResourcesRequireASharedBranchForBranchScopedMembers() throws Exception {
+		UUID onlyInB = UUID.fromString(TestApi.read(api.post(owner.accessToken(), staffPath(), """
+				{"displayName": "Only in B", "role": "STAFF", "bookable": true, "branchIds": ["%s"]}
+				""".formatted(branchB)), "$.id"));
+		UUID unassigned = UUID.fromString(TestApi.read(api.post(owner.accessToken(), staffPath(), """
+				{"displayName": "Unassigned", "role": "STAFF", "bookable": true}
+				"""), "$.id"));
+
+		allowed(() -> access.requireForStaffMember(salonId, colleagueStaffId, receptionist.id(),
+				SalonPermission.APPOINTMENT_VIEW_ANY, SalonPermission.APPOINTMENT_VIEW_OWN));
+		denied("BRANCH_NOT_ASSIGNED", () -> access.requireForStaffMember(salonId, onlyInB, receptionist.id(),
+				SalonPermission.APPOINTMENT_VIEW_ANY, SalonPermission.APPOINTMENT_VIEW_OWN));
+		// Salon-wide members reach everyone, also staff without branches.
+		allowed(() -> access.requireForStaffMember(salonId, unassigned, manager.id(),
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
+		allowed(() -> access.requireForStaffMember(salonId, stylistStaffId, stylist.id(),
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
+		denied("INSUFFICIENT_PERMISSION", () -> access.requireForStaffMember(salonId, colleagueStaffId, stylist.id(),
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
+		denied("STAFF_NOT_FOUND", () -> access.requireForStaffMember(salonId, UUID.randomUUID(), owner.id(),
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
+	}
+
 	@Test
 	void assignmentChangesApplyImmediatelyWithoutNewTokens() throws Exception {
 		TestUser movingReceptionist = api.signUp("Moving Receptionist");
@@ -142,6 +167,8 @@ class BranchScopeIntegrationTests {
 				SalonPermission.APPOINTMENT_VIEW_ANY));
 		denied("SALON_NOT_FOUND", () -> access.requireForStaffResource(salonId, branchA, stylistStaffId,
 				outsider.id(), SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
+		denied("SALON_NOT_FOUND", () -> access.requireForStaffMember(salonId, UUID.randomUUID(), outsider.id(),
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN));
 	}
 
 	private void assign(UUID staffId, String role, UUID branchId) throws Exception {

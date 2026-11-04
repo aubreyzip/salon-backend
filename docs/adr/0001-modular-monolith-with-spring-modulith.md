@@ -16,7 +16,7 @@ Salon is a new multi-tenant SaaS with an evolving domain (identity, salons and b
 - Side effects across modules use domain events consumed by `@ApplicationModuleListener`, persisted by the Modulith event publication registry (`event_publication` table, owned by Flyway). No message broker.
 - Inside a module: light layering (`web`, `application`, `domain`, `infrastructure`). Ports and adapters only at real external boundaries (payment, SMS, email, push, storage).
 
-Planned modules: `identity`, `salons` (tenant, branches, staff/membership; package `com.salon.salons`, plural to avoid `com.salon.salon`), `catalog`, `scheduling`, `booking`, `customer`, `review`, `discovery` (read-only), `billing`, `notification`, `media`, `audit`, `messaging`, `shared` (kept small). Implemented so far: `shared`, `identity`, `audit`, `messaging`, `salons`.
+Planned modules: `identity`, `salons` (tenant, branches, staff/membership; package `com.salon.salons`, plural to avoid `com.salon.salon`), `catalog`, `scheduling`, `booking`, `customer`, `review`, `discovery` (read-only), `billing`, `notification`, `media`, `audit`, `messaging`, `shared` (kept small). Implemented so far: `shared`, `identity`, `audit`, `messaging`, `salons`, `catalog`, `scheduling` (dependencies `salons ← catalog ← scheduling`, ADR-0012).
 
 `messaging` (added in Phase 1) contains only channel gateways (`EmailGateway`, `SmsGateway`, later push) and depends on no business module. `identity` uses it directly to send one-time codes synchronously. `notification` will use it for event-driven messages. Keeping the channels separate avoids an `identity` ↔ `notification` dependency cycle.
 

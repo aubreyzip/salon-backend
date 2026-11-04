@@ -70,4 +70,28 @@ public class TenantAccess {
 		return membership;
 	}
 
+	/**
+	 * Work on one staff member's resource that is not tied to a branch (e.g. their time off). The
+	 * "any" permission, or the "own" permission for the caller's own resources. For branch-scoped
+	 * members acting on someone else, the staff member must work in one of the member's branches.
+	 * @throws com.salon.shared.ApiException {@code 404 STAFF_NOT_FOUND} if the staff member is not in
+	 * this salon (checked after membership, so outsiders still get {@code SALON_NOT_FOUND})
+	 */
+	public SalonMembership requireForStaffMember(UUID salonId, UUID resourceStaffId, UUID userId,
+			SalonPermission anyPermission, SalonPermission ownPermission) {
+		SalonMembership membership = requireMember(salonId, userId);
+		boolean own = membership.isOwnStaffResource(resourceStaffId);
+		if (!membership.has(anyPermission) && !(own && membership.has(ownPermission))) {
+			throw SalonErrors.insufficientPermission();
+		}
+		var target = staff.findByIdAndSalonId(resourceStaffId, salonId).orElseThrow(SalonErrors::staffNotFound);
+		boolean sharesBranch = membership.branchRestriction()
+			.map(branchIds -> target.getBranchIds().stream().anyMatch(branchIds::contains))
+			.orElse(true);
+		if (!own && !sharesBranch) {
+			throw SalonErrors.branchNotAssigned();
+		}
+		return membership;
+	}
+
 }

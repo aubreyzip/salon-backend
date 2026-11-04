@@ -97,6 +97,29 @@ public class TestApi {
 				branchJson("Kadıköy Şubesi", true)).andExpect(status().isCreated()), "$.id"));
 	}
 
+	/**
+	 * Submits the salon for review and approves it with a new platform admin, so it becomes
+	 * {@code ACTIVE} (public). The salon needs an active branch with a location ({@link #createBranch}).
+	 */
+	public void approveSalon(TestUser owner, UUID salonId) throws Exception {
+		TestUser admin = makePlatformAdmin(signUp("Admin"));
+		post(owner.accessToken(), "/api/v1/salons/" + salonId + "/submit-for-review", null)
+			.andExpect(status().isOk());
+		post(admin.accessToken(), "/api/v1/admin/salons/" + salonId + "/approve", null).andExpect(status().isOk());
+	}
+
+	/** Creates an online-bookable "haircut" category service without buffer. */
+	public UUID createService(TestUser user, UUID salonId, String name, int durationMinutes) throws Exception {
+		return UUID.fromString(read(post(user.accessToken(), "/api/v1/salons/" + salonId + "/services",
+				serviceJson(name, durationMinutes)).andExpect(status().isCreated()), "$.id"));
+	}
+
+	public static String serviceJson(String name, int durationMinutes) {
+		return """
+				{"categoryId": 1, "name": "%s", "durationMinutes": %d, "price": 450.00}
+				""".formatted(name, durationMinutes);
+	}
+
 	/** A valid branch in İstanbul, optionally without map coordinates. */
 	public static String branchJson(String name, boolean withLocation) {
 		String location = withLocation ? "\"latitude\": 40.9903, \"longitude\": 29.0290," : "";
@@ -144,6 +167,10 @@ public class TestApi {
 
 	public ResultActions put(String accessToken, String path, String json) throws Exception {
 		return perform(HttpMethod.PUT, accessToken, path, json);
+	}
+
+	public ResultActions delete(String accessToken, String path) throws Exception {
+		return perform(HttpMethod.DELETE, accessToken, path, null);
 	}
 
 	public ResultActions perform(HttpMethod method, String accessToken, String path, String json) throws Exception {

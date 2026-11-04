@@ -33,6 +33,7 @@ Branch scope per role:
 - `require(salon, user, permission)`: salon-level work (settings, branch setup, staff management, catalog, billing). Permission only.
 - `requireInBranch(salon, branch, user, permission)`: branch-specific operational work. Permission + scope.
 - `requireForStaffResource(salon, branch, resourceStaff, user, anyPermission, ownPermission)`: one staff member's resource in a branch (their schedule, their appointments). (`any`, or `own` for the caller's own resource) + scope.
+- `requireForStaffMember(salon, resourceStaff, user, anyPermission, ownPermission)` (Phase 3): one staff member's resource that is not tied to a branch (their time off). (`any`, or `own` for the caller's own resource). A branch-scoped member acting on someone else must share at least one branch with that staff member. Unknown staff ids give `404 STAFF_NOT_FOUND`, after the membership check.
 - `SalonMembership.branchRestriction()`: for list queries; empty for salon-wide members, otherwise the branch ids results must be filtered to.
 
 Errors: `404 SALON_NOT_FOUND` (not a member), `403 INSUFFICIENT_PERMISSION`, `403 BRANCH_NOT_ASSIGNED`.
@@ -53,4 +54,10 @@ What is salon-level (no branch scope):
 ## Open decisions for later phases
 
 - **Phase 4, client privacy:** salon client records are tenant-level. Recommended: branch-scoped roles see only clients with appointments in their branches (via `branchRestriction()`); owners and managers see all.
-- **Phase 3/4, inactive branches:** whether schedules and appointments may exist in inactive branches, and whether branch-scoped roles keep read access to history there.
+- **Inactive branches (decided in Phase 3, ADR-0012):** they can be fully configured (offerings, hours, schedules) and are not public. Branch assignments keep restricting operational access there. Phase 4 still has to decide whether appointments may exist in inactive branches and whether branch-scoped roles keep read access to their history.
+
+## Phase 3 usage (ADR-0012)
+
+- Catalog changes use `require(CATALOG_MANAGE)`, branch calendar changes `require(BRANCH_MANAGE)`. Reads are member-wide.
+- Working hours use `requireForStaffResource(SCHEDULE_MANAGE_ANY, SCHEDULE_MANAGE_OWN)` for the target branch. Lists are filtered with `branchRestriction()`, except for the caller's own hours.
+- Time off uses `requireForStaffMember(SCHEDULE_MANAGE_ANY, SCHEDULE_MANAGE_OWN)` for reading and changing.
