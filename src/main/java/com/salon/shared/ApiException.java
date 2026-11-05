@@ -1,5 +1,7 @@
 package com.salon.shared;
 
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 
 /**
@@ -12,10 +14,25 @@ public class ApiException extends RuntimeException {
 
 	private final String code;
 
+	private final Map<String, Object> properties;
+
 	public ApiException(HttpStatus status, String code, String detail) {
+		this(status, code, detail, Map.of());
+	}
+
+	/**
+	 * @param properties extra problem-detail members (e.g. the conflicting resources); must not
+	 * contain personal data the caller may not see
+	 */
+	public ApiException(HttpStatus status, String code, String detail, Map<String, Object> properties) {
 		super(detail);
 		this.status = status;
 		this.code = code;
+		this.properties = Map.copyOf(properties);
+	}
+
+	public Map<String, Object> getProperties() {
+		return properties;
 	}
 
 	public HttpStatus getStatus() {

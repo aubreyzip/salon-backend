@@ -54,7 +54,7 @@ What is salon-level (no branch scope):
 ## Open decisions for later phases
 
 - **Phase 4, client privacy:** salon client records are tenant-level. Recommended: branch-scoped roles see only clients with appointments in their branches (via `branchRestriction()`); owners and managers see all.
-- **Inactive branches (decided in Phase 3, ADR-0012):** they can be fully configured (offerings, hours, schedules) and are not public. Branch assignments keep restricting operational access there. Phase 4 still has to decide whether appointments may exist in inactive branches and whether branch-scoped roles keep read access to their history.
+- **Inactive branches (decided in Phase 3, ADR-0012 decisions 1 and 22):** they can be fully configured (offerings, hours, schedules) and are not public. Their appointments stay; deactivation does not cancel them or change read access. Branch-scoped members keep reading a branch's appointment history only while their membership is active, their assignment to that branch exists, and they hold the read permission. These are the normal rules of this ADR; inactive branches get no exception.
 
 ## Phase 3 usage (ADR-0012)
 

@@ -6,6 +6,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
+import com.salon.scheduling.TestBlockingAppointments;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -13,7 +14,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 /**
  * Full application context against PostgreSQL in Testcontainers, with MockMvc, recording
- * email/SMS gateways and the {@link TestApi} client. All tests using it share one cached context
+ * email/SMS gateways, the {@link TestApi} client and {@link TestBlockingAppointments} (stand-in
+ * appointments for schedule-change conflicts until booking exists). All tests using it share one cached context
  * and database container.
  */
 @Target(ElementType.TYPE)
@@ -22,7 +24,8 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import({ TestcontainersConfiguration.class, RecordingMessagingConfiguration.class, TestApiConfiguration.class })
+@Import({ TestcontainersConfiguration.class, RecordingMessagingConfiguration.class, TestApiConfiguration.class,
+		TestBlockingAppointments.class })
 public @interface IntegrationTest {
 
 }

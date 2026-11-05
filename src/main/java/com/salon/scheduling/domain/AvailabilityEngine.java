@@ -62,6 +62,28 @@ public final class AvailabilityEngine {
 			closures = List.copyOf(closures);
 		}
 
+		public BranchCalendar withOpeningHours(Map<DayOfWeek, List<TimeInterval>> newOpeningHours) {
+			return new BranchCalendar(newOpeningHours, specialDays, closures);
+		}
+
+		public BranchCalendar withSpecialDay(LocalDate date, List<TimeInterval> intervals) {
+			Map<LocalDate, List<TimeInterval>> changed = new HashMap<>(specialDays);
+			changed.put(date, intervals);
+			return new BranchCalendar(openingHours, changed, closures);
+		}
+
+		public BranchCalendar withoutSpecialDay(LocalDate date) {
+			Map<LocalDate, List<TimeInterval>> changed = new HashMap<>(specialDays);
+			changed.remove(date);
+			return new BranchCalendar(openingHours, changed, closures);
+		}
+
+		public BranchCalendar withClosure(DateRange closure) {
+			List<DateRange> changed = new ArrayList<>(closures);
+			changed.add(closure);
+			return new BranchCalendar(openingHours, specialDays, changed);
+		}
+
 		public List<TimeInterval> openOn(LocalDate date) {
 			if (closures.stream().anyMatch(closure -> closure.contains(date))) {
 				return List.of();
@@ -86,11 +108,7 @@ public final class AvailabilityEngine {
 		}
 
 		List<TimeInterval> workingOn(LocalDate date) {
-			return patterns.stream()
-				.filter(pattern -> pattern.appliesOn(date))
-				.findFirst()
-				.map(pattern -> pattern.hoursOn(date.getDayOfWeek()))
-				.orElse(List.of());
+			return WorkingPattern.hoursOn(patterns, date);
 		}
 
 	}
@@ -160,7 +178,7 @@ public final class AvailabilityEngine {
 		return slots;
 	}
 
-	private static List<InstantRange> toInstants(List<TimeInterval> intervals, LocalDate date, ZoneId zone) {
+	static List<InstantRange> toInstants(List<TimeInterval> intervals, LocalDate date, ZoneId zone) {
 		List<InstantRange> ranges = new ArrayList<>();
 		for (TimeInterval interval : intervals) {
 			Instant start = ZonedDateTime.of(date, interval.startTime(), zone).toInstant();

@@ -22,23 +22,13 @@ import com.salon.scheduling.application.SchedulingViews.ServiceSummary;
 import com.salon.scheduling.application.SchedulingViews.SlotView;
 import com.salon.scheduling.application.SchedulingViews.StaffSummary;
 import com.salon.scheduling.domain.AvailabilityEngine;
-import com.salon.scheduling.domain.AvailabilityEngine.BranchCalendar;
 import com.salon.scheduling.domain.AvailabilityEngine.StaffCalendar;
-import com.salon.scheduling.domain.BranchClosure;
-import com.salon.scheduling.domain.BranchClosureRepository;
-import com.salon.scheduling.domain.BranchHours;
-import com.salon.scheduling.domain.BranchHoursRepository;
 import com.salon.scheduling.domain.InstantRange;
 import com.salon.scheduling.domain.SchedulingErrors;
-import com.salon.scheduling.domain.SpecialDay;
-import com.salon.scheduling.domain.SpecialDayRepository;
-import com.salon.scheduling.domain.TimeInterval;
 import com.salon.scheduling.domain.TimeOff;
 import com.salon.scheduling.domain.TimeOffRepository;
 import com.salon.scheduling.domain.WorkingPeriod;
 import com.salon.scheduling.domain.WorkingPeriodRepository;
-import com.salon.shared.ApiException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -63,11 +53,7 @@ public class AvailabilityService {
 
 	private final ServiceCatalog catalog;
 
-	private final BranchHoursRepository hours;
-
-	private final SpecialDayRepository specialDays;
-
-	private final BranchClosureRepository closures;
+	private final BranchCalendars calendars;
 
 	private final WorkingPeriodRepository periods;
 
@@ -75,14 +61,11 @@ public class AvailabilityService {
 
 	private final Clock clock;
 
-	AvailabilityService(SalonDirectory directory, ServiceCatalog catalog, BranchHoursRepository hours,
-			SpecialDayRepository specialDays, BranchClosureRepository closures, WorkingPeriodRepository periods,
-			TimeOffRepository timeOffs, Clock clock) {
+	AvailabilityService(SalonDirectory directory, ServiceCatalog catalog, BranchCalendars calendars,
+			WorkingPeriodRepository periods, TimeOffRepository timeOffs, Clock clock) {
 		this.directory = directory;
 		this.catalog = catalog;
-		this.hours = hours;
-		this.specialDays = specialDays;
-		this.closures = closures;
+		this.calendars = calendars;
 		this.periods = periods;
 		this.timeOffs = timeOffs;
 		this.clock = clock;
@@ -120,7 +103,7 @@ public class AvailabilityService {
 					.collect(Collectors.groupingBy(TimeOff::getStaffId,
 							Collectors.mapping(TimeOff::range, Collectors.toList())));
 
-		List<StaffCalendar> calendars = staff.stream()
+		List<StaffCalendar> staffCalendars = staff.stream()
 			.map(member -> new StaffCalendar(member.id(), requirements.durationMinutesByStaff().get(member.id()),
 					periodsByStaff.getOrDefault(member.id(), List.of()).stream().map(WorkingPeriod::pattern).toList(),
 					absencesByStaff.getOrDefault(member.id(), List.of())))
@@ -128,7 +111,7 @@ public class AvailabilityService {
 
 		var days = AvailabilityEngine.compute(new AvailabilityEngine.Query(zone, clock.instant(), from, to,
 				branch.slotIntervalMinutes(), Duration.ofMinutes(branch.minNoticeMinutes()), branch.maxAdvanceDays(),
-				requirements.bufferMinutes(), branchCalendar(salonId, branchId, from, to), calendars));
+				requirements.bufferMinutes(), calendars.load(salonId, branchId, from, to), staffCalendars));
 
 		return new AvailabilityView(branchId, zone.getId(),
 				requirements.services()
@@ -149,26 +132,9 @@ public class AvailabilityService {
 					.toList());
 	}
 
-	private BranchCalendar branchCalendar(UUID salonId, UUID branchId, LocalDate from, LocalDate to) {
-		var openingHours = hours.findBySalonIdAndBranchId(salonId, branchId)
-			.map(BranchHours::byDay)
-			.orElse(Map.of());
-		Map<LocalDate, List<TimeInterval>> special = specialDays
-			.findBySalonIdAndBranchIdAndOnDateBetweenOrderByOnDateAsc(salonId, branchId, from, to)
-			.stream()
-			.collect(Collectors.toMap(SpecialDay::getOnDate, SpecialDay::getIntervals));
-		var closed = closures
-			.findBySalonIdAndBranchIdAndStartDateLessThanEqualAndEndDateGreaterThanEqual(salonId, branchId, to, from)
-			.stream()
-			.map(BranchClosure::dates)
-			.toList();
-		return new BranchCalendar(openingHours, special, closed);
-	}
-
 	private static void checkQuery(List<UUID> serviceIds, LocalDate from, LocalDate to) {
 		if (serviceIds == null || serviceIds.isEmpty() || serviceIds.size() > MAX_SERVICES) {
-			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SERVICES",
-					"Request between 1 and " + MAX_SERVICES + " services.");
+			throw SchedulingErrors.invalidServices(MAX_SERVICES);
 		}
 		if (to.isBefore(from) || ChronoUnit.DAYS.between(from, to) >= MAX_DAYS) {
 			throw SchedulingErrors.invalidDateRange("The range must be ordered and at most " + MAX_DAYS + " days long.");

@@ -3,6 +3,8 @@ package com.salon.scheduling.application;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -15,6 +17,7 @@ import java.util.UUID;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
+import com.salon.salons.BranchInfo;
 import com.salon.salons.SalonDirectory;
 import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
@@ -22,9 +25,12 @@ import com.salon.salons.StaffInfo;
 import com.salon.salons.TenantAccess;
 import com.salon.scheduling.application.SchedulingViews.PeriodView;
 import com.salon.scheduling.application.SchedulingViews.WorkingHoursView;
+import com.salon.scheduling.BlockingAppointment;
 import com.salon.scheduling.domain.DateRange;
+import com.salon.scheduling.domain.ScheduleCoverage;
 import com.salon.scheduling.domain.SchedulingErrors;
 import com.salon.scheduling.domain.WeeklyInterval;
+import com.salon.scheduling.domain.WorkingPattern;
 import com.salon.scheduling.domain.WorkingPeriod;
 import com.salon.scheduling.domain.WorkingPeriodRepository;
 import org.springframework.stereotype.Service;
@@ -48,15 +54,18 @@ public class WorkingHoursService {
 
 	private final SalonDirectory directory;
 
+	private final ScheduleConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
 	WorkingHoursService(WorkingPeriodRepository periods, TenantAccess access, SalonDirectory directory,
-			AuditLog auditLog, Clock clock) {
+			ScheduleConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.periods = periods;
 		this.access = access;
 		this.directory = directory;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -92,10 +101,10 @@ public class WorkingHoursService {
 	public WorkingHoursView replace(UUID salonId, UUID staffId, UUID branchId, UUID userId,
 			List<PeriodInput> inputs) {
 		directory.lockSalon(salonId);
-		access.requireForStaffResource(salonId, branchId, staffId, userId, SalonPermission.SCHEDULE_MANAGE_ANY,
-				SalonPermission.SCHEDULE_MANAGE_OWN);
+		SalonMembership caller = access.requireForStaffResource(salonId, branchId, staffId, userId,
+				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN);
 		directory.ensureModifiable(salonId);
-		directory.findBranch(salonId, branchId).orElseThrow(SchedulingErrors::branchNotFound);
+		BranchInfo branch = directory.findBranch(salonId, branchId).orElseThrow(SchedulingErrors::branchNotFound);
 		StaffInfo staff = loadStaff(salonId, staffId);
 		if (!inputs.isEmpty()) {
 			if (!staff.active()) {
@@ -124,6 +133,8 @@ public class WorkingHoursService {
 				});
 			}
 		}
+		checkAppointments(caller, salonId, staffId, branch,
+				existing.stream().filter(period -> period.getBranchId().equals(branchId)).toList(), replacement);
 
 		periods.deleteAll(existing.stream().filter(period -> period.getBranchId().equals(branchId)).toList());
 		periods.flush();
@@ -131,6 +142,23 @@ public class WorkingHoursService {
 		auditLog.record(new AuditRecord(userId, salonId, "scheduling.working_hours.replaced", "staff_member",
 				staffId.toString(), "branch " + branchId + ", " + replacement.size() + " periods"));
 		return new WorkingHoursView(branchId, replacement.stream().map(PeriodView::of).toList());
+	}
+
+	/** Decision 21: the new hours must still cover the staff member's appointments at the branch. */
+	private void checkAppointments(SalonMembership caller, UUID salonId, UUID staffId, BranchInfo branch,
+			List<WorkingPeriod> before, List<WorkingPeriod> after) {
+		List<BlockingAppointment> appointments = conflicts.ofStaff(salonId, staffId, branch.id());
+		if (appointments.isEmpty()) {
+			return;
+		}
+		List<WorkingPattern> oldHours = before.stream().map(WorkingPeriod::pattern).toList();
+		List<WorkingPattern> newHours = after.stream().map(WorkingPeriod::pattern).toList();
+		ZoneId zone = branch.timeZone();
+		conflicts.reject(caller, appointments, appointment -> {
+			LocalDate date = LocalDate.ofInstant(appointment.start(), zone);
+			return ScheduleCoverage.losesCoverage(WorkingPattern.hoursOn(oldHours, date),
+					WorkingPattern.hoursOn(newHours, date), zone, appointment.start(), appointment.blockEnd());
+		});
 	}
 
 	private static void checkNoDateOverlap(List<WorkingPeriod> sortedByStart) {

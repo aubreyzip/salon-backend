@@ -42,6 +42,11 @@ public final class SchedulingErrors {
 		return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TIME_RANGE", detail);
 	}
 
+	public static ApiException invalidServices(int maxServices) {
+		return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SERVICES",
+				"Request between 1 and " + maxServices + " services.");
+	}
+
 	public static ApiException overlappingPeriods() {
 		return new ApiException(HttpStatus.BAD_REQUEST, "OVERLAPPING_PERIODS",
 				"Working-hour periods at the same branch must not overlap in dates.");

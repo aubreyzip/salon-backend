@@ -201,6 +201,26 @@ class SchedulingIntegrationTests {
 	}
 
 	@Test
+	void hoursAtABranchTheStaffMemberLeftStillCountUntilCleared() throws Exception {
+		UUID staffId = createStaff("Ayşe", branchA, branchB);
+		String staff = salon + "/staff/" + staffId;
+		api.put(owner.accessToken(), staff + "/branches/" + branchA + "/working-hours",
+				hours("MONDAY", "09:00", "17:00"))
+			.andExpect(status().isOk());
+		assign(staffId, "STAFF", branchB);
+
+		api.put(owner.accessToken(), staff + "/branches/" + branchB + "/working-hours",
+				hours("MONDAY", "09:00", "17:00"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("WORKING_HOURS_CONFLICT"));
+		api.put(owner.accessToken(), staff + "/branches/" + branchA + "/working-hours", "{\"periods\": []}")
+			.andExpect(status().isOk());
+		api.put(owner.accessToken(), staff + "/branches/" + branchB + "/working-hours",
+				hours("MONDAY", "09:00", "17:00"))
+			.andExpect(status().isOk());
+	}
+
+	@Test
 	void concurrentConflictingHoursAtTwoBranchesCannotBothBeSaved() throws Exception {
 		UUID staffId = createStaff("Ayşe", branchA, branchB);
 		String staff = salon + "/staff/" + staffId;

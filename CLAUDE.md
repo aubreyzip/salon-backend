@@ -44,11 +44,12 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `messaging`: `EmailGateway`, `SmsGateway` (logging placeholders until providers are chosen).
   - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules), `BranchInfo`, `StaffInfo`.
   - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
-  - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). No public API yet.
+  - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking in Phase 4).
 - Dependencies: `salons ← catalog ← scheduling`. `salons` must not depend on either.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
-- Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model.
+- Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model. One exception: an extension interface in a module's root package that a *dependent* module implements, when an answer is needed synchronously and a direct call would be a cycle (ADR-0001; e.g. `scheduling.BlockingAppointments`). Inject all implementations; none means "nothing to report".
+- Schedule changes that remove time (opening hours, special days, closures, working hours, time off) must go through `ScheduleConflicts` (decision 21: `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, listing only the appointments the caller may view). Never silently invalidate appointments.
 
 ## API conventions
 
@@ -100,6 +101,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Integration tests use `@IntegrationTest` (shared context and container, MockMvc, recording email/SMS gateways with `lastCodeSentTo(...)`). Use unique emails and phone numbers per test, since the database is shared.
 - Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `approveSalon` (makes it `ACTIVE`/public), `createService`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `get/post/put/delete/perform`.
 - `TenantIsolationIntegrationTests` resolves `{salon}`, `{branch}`, `{staff}`, `{service}` and `{section}` in paths and bodies. Matrix cases must be idempotent; deletes by id go in `deletesAreLimitedToMembersWithPermission`.
+- `TestBlockingAppointments` (in the shared integration context) stands in for booking: `add(salonId, branchId, staffId, start, blockEnd)`, `clear(salonId)` (call it in `@AfterEach`).
 - Availability tests: use dates a few days ahead (default policy: 60 minutes notice, 60 days advance). The engine itself is tested without Spring (`AvailabilityEngineTest`, including DST cases with `Europe/Berlin`).
 - Race tests use `Concurrently.run(...)` and assert on the database state afterwards. Simulate email outages with `RecordingEmailGateway.failDeliveryTo(email)` (always restore it in `finally`).
 - Check database constraints by name with direct SQL (see `SalonDatabaseConstraintsIntegrationTests`).

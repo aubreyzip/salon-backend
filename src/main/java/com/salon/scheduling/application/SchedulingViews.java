@@ -9,6 +9,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
+import com.salon.scheduling.BlockingAppointment;
 import com.salon.scheduling.domain.BranchClosure;
 import com.salon.scheduling.domain.SpecialDay;
 import com.salon.scheduling.domain.TimeInterval;
@@ -92,6 +93,21 @@ public final class SchedulingViews {
 		static TimeOffView of(TimeOff timeOff) {
 			return new TimeOffView(timeOff.getId(), timeOff.getStaffId(), timeOff.getStartAt(), timeOff.getEndAt(),
 					timeOff.getReason());
+		}
+
+	}
+
+	/**
+	 * An appointment a schedule change would conflict with (in a
+	 * {@code 409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS} problem).
+	 *
+	 * @param end when the staff member is free again (services plus cleanup buffer)
+	 */
+	public record ConflictingAppointmentView(UUID id, UUID branchId, UUID staffId, Instant start, Instant end) {
+
+		static ConflictingAppointmentView of(BlockingAppointment appointment) {
+			return new ConflictingAppointmentView(appointment.id(), appointment.branchId(), appointment.staffId(),
+					appointment.start(), appointment.blockEnd());
 		}
 
 	}

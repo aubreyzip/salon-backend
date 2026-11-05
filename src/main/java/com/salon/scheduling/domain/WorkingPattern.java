@@ -28,6 +28,15 @@ public record WorkingPattern(DateRange dates, Map<DayOfWeek, List<TimeInterval>>
 		return hoursByDay.getOrDefault(day, List.of());
 	}
 
+	/** Working hours on the date from the pattern effective then (patterns do not overlap in dates). */
+	public static List<TimeInterval> hoursOn(List<WorkingPattern> patterns, LocalDate date) {
+		return patterns.stream()
+			.filter(pattern -> pattern.appliesOn(date))
+			.findFirst()
+			.map(pattern -> pattern.hoursOn(date.getDayOfWeek()))
+			.orElse(List.of());
+	}
+
 	/**
 	 * The first day of the week on which both patterns apply on some date and have overlapping
 	 * hours, if any.

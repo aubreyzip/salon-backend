@@ -11,6 +11,7 @@ import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
 import com.salon.salons.BranchInfo;
 import com.salon.salons.SalonDirectory;
+import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
 import com.salon.salons.TenantAccess;
 import com.salon.scheduling.application.SchedulingViews.ClosureView;
@@ -53,18 +54,21 @@ public class BranchCalendarService {
 
 	private final SalonDirectory directory;
 
+	private final ScheduleConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
 	BranchCalendarService(BranchHoursRepository hours, SpecialDayRepository specialDays,
-			BranchClosureRepository closures, TenantAccess access, SalonDirectory directory, AuditLog auditLog,
-			Clock clock) {
+			BranchClosureRepository closures, TenantAccess access, SalonDirectory directory,
+			ScheduleConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.hours = hours;
 		this.specialDays = specialDays;
 		this.closures = closures;
 		this.access = access;
 		this.directory = directory;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -82,7 +86,11 @@ public class BranchCalendarService {
 	/** Replaces the weekly opening hours. An empty list means the branch is closed every day. */
 	public OpeningHoursView replaceOpeningHours(UUID salonId, UUID branchId, UUID userId,
 			List<WeeklyInterval> intervals) {
-		BranchInfo branch = checkManage(salonId, branchId, userId);
+		Managed managed = checkManage(salonId, branchId, userId);
+		BranchInfo branch = managed.branch();
+		var newHours = WeeklyInterval.byDay(intervals);
+		conflicts.checkBranchChange(managed.caller(), salonId, branchId, branch.timeZone(),
+				calendar -> calendar.withOpeningHours(newHours));
 		Instant now = clock.instant();
 		BranchHours branchHours = hours.findBySalonIdAndBranchId(salonId, branchId)
 			.orElseGet(() -> new BranchHours(salonId, branchId, now));
@@ -109,7 +117,10 @@ public class BranchCalendarService {
 	/** Sets the hours of one date, replacing the weekly hours. No intervals: closed that day. */
 	public SpecialDayView putSpecialDay(UUID salonId, UUID branchId, LocalDate date, UUID userId,
 			List<TimeInterval> intervals, String note) {
-		checkManage(salonId, branchId, userId);
+		Managed managed = checkManage(salonId, branchId, userId);
+		List<TimeInterval> sorted = TimeInterval.sortedNonOverlapping(intervals);
+		conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
+				calendar -> calendar.withSpecialDay(date, sorted));
 		SpecialDay day = specialDays.findBySalonIdAndBranchIdAndOnDate(salonId, branchId, date)
 			.orElseGet(() -> new SpecialDay(salonId, branchId, date));
 		day.change(intervals, note, clock.instant());
@@ -120,8 +131,11 @@ public class BranchCalendarService {
 
 	/** Removes the special hours of a date, so the weekly hours apply again. Idempotent. */
 	public void deleteSpecialDay(UUID salonId, UUID branchId, LocalDate date, UUID userId) {
-		checkManage(salonId, branchId, userId);
+		Managed managed = checkManage(salonId, branchId, userId);
 		specialDays.findBySalonIdAndBranchIdAndOnDate(salonId, branchId, date).ifPresent(day -> {
+			// The weekly hours may be shorter than the special day's.
+			conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
+					calendar -> calendar.withoutSpecialDay(date));
 			specialDays.delete(day);
 			audit(userId, salonId, branchId, "scheduling.special_day.removed", date.toString());
 		});
@@ -142,10 +156,12 @@ public class BranchCalendarService {
 	}
 
 	public ClosureView createClosure(UUID salonId, UUID branchId, UUID userId, DateRange dates, String reason) {
-		checkManage(salonId, branchId, userId);
+		Managed managed = checkManage(salonId, branchId, userId);
 		if (dates.end() != null && ChronoUnit.DAYS.between(dates.start(), dates.end()) >= MAX_LIST_DAYS) {
 			throw SchedulingErrors.invalidDateRange("A closure can be at most 366 days long.");
 		}
+		conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
+				calendar -> calendar.withClosure(dates));
 		BranchClosure closure = closures.save(new BranchClosure(salonId, branchId, dates, reason, clock.instant()));
 		audit(userId, salonId, branchId, "scheduling.closure.created", dates.start() + ".." + dates.end());
 		return ClosureView.of(closure);
@@ -160,15 +176,19 @@ public class BranchCalendarService {
 				closure.getStartDate() + ".." + closure.getEndDate());
 	}
 
+	private record Managed(SalonMembership caller, BranchInfo branch) {
+	}
+
 	/**
-	 * Salon lock first (one writer per salon, so "get or create" of the per-branch rows cannot race),
-	 * then access, then the suspension check (CLAUDE.md, salon row lock pattern).
+	 * Salon lock first (one writer per salon, so "get or create" of the per-branch rows and the
+	 * appointment conflict check cannot race), then access, then the suspension check (CLAUDE.md,
+	 * salon row lock pattern).
 	 */
-	private BranchInfo checkManage(UUID salonId, UUID branchId, UUID userId) {
+	private Managed checkManage(UUID salonId, UUID branchId, UUID userId) {
 		directory.lockSalon(salonId);
-		access.require(salonId, userId, SalonPermission.BRANCH_MANAGE);
+		SalonMembership caller = access.require(salonId, userId, SalonPermission.BRANCH_MANAGE);
 		directory.ensureModifiable(salonId);
-		return loadBranch(salonId, branchId);
+		return new Managed(caller, loadBranch(salonId, branchId));
 	}
 
 	private BranchInfo loadBranch(UUID salonId, UUID branchId) {

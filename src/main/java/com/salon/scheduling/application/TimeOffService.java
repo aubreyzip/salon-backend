@@ -9,9 +9,11 @@ import java.util.UUID;
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
 import com.salon.salons.SalonDirectory;
+import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
 import com.salon.salons.TenantAccess;
 import com.salon.scheduling.application.SchedulingViews.TimeOffView;
+import com.salon.scheduling.domain.InstantRange;
 import com.salon.scheduling.domain.SchedulingErrors;
 import com.salon.scheduling.domain.TimeOff;
 import com.salon.scheduling.domain.TimeOffRepository;
@@ -35,15 +37,18 @@ public class TimeOffService {
 
 	private final SalonDirectory directory;
 
+	private final ScheduleConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
-	TimeOffService(TimeOffRepository timeOffs, TenantAccess access, SalonDirectory directory, AuditLog auditLog,
-			Clock clock) {
+	TimeOffService(TimeOffRepository timeOffs, TenantAccess access, SalonDirectory directory,
+			ScheduleConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.timeOffs = timeOffs;
 		this.access = access;
 		this.directory = directory;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -66,12 +71,18 @@ public class TimeOffService {
 			.toList();
 	}
 
+	/**
+	 * Takes the salon row lock, so the appointment check (decision 21) cannot race a booking.
+	 */
 	public TimeOffView create(UUID salonId, UUID staffId, UUID userId, Instant startAt, Instant endAt,
 			String reason) {
-		checkAccess(salonId, staffId, userId);
+		directory.lockSalon(salonId);
+		SalonMembership caller = checkAccess(salonId, staffId, userId);
 		directory.ensureModifiable(salonId);
-		TimeOff timeOff = timeOffs
-			.save(new TimeOff(salonId, staffId, startAt, endAt, reason, userId, clock.instant()));
+		TimeOff timeOff = new TimeOff(salonId, staffId, startAt, endAt, reason, userId, clock.instant());
+		conflicts.reject(caller, conflicts.ofStaff(salonId, staffId, null),
+				appointment -> timeOff.range().overlaps(new InstantRange(appointment.start(), appointment.blockEnd())));
+		timeOffs.save(timeOff);
 		audit(userId, salonId, "scheduling.time_off.created", timeOff);
 		return TimeOffView.of(timeOff);
 	}
@@ -85,8 +96,8 @@ public class TimeOffService {
 		audit(userId, salonId, "scheduling.time_off.deleted", timeOff);
 	}
 
-	private void checkAccess(UUID salonId, UUID staffId, UUID userId) {
-		access.requireForStaffMember(salonId, staffId, userId, SalonPermission.SCHEDULE_MANAGE_ANY,
+	private SalonMembership checkAccess(UUID salonId, UUID staffId, UUID userId) {
+		return access.requireForStaffMember(salonId, staffId, userId, SalonPermission.SCHEDULE_MANAGE_ANY,
 				SalonPermission.SCHEDULE_MANAGE_OWN);
 	}
 
