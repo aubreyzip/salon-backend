@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-11-04 (after commit `47e8537 feat: phase 3 progression`, CI green; pre-Phase-4 checks done).
+Last updated: 2026-11-05. Phase 3 is in commit `47e8537` (CI green). The follow-ups since then (see "Work log") are not committed yet.
 
 Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisions: `docs/adr/` (index in `docs/adr/README.md`).
 
@@ -11,7 +11,7 @@ Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisi
 | 0. Foundation | Done, except the deferred items below | `3429fc6` |
 | 1. Identity (registration, login, JWT and refresh tokens, email and phone verification, password reset, audit) | Done | `3612321` |
 | 2. Salons and access (salons, branches, staff and roles, invitations, reactivation, review lifecycle, tenant isolation, branch scopes) | Done | `adc074b` |
-| 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine) | Done (506 tests, randomized-order runs green), ADR-0012 | `47e8537` |
+| 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine, appointment-conflict boundary) | Done (506 tests, randomized-order runs green), ADR-0012 | `47e8537` + uncommitted follow-ups |
 | **4. Booking** | **Next. Not started** | — |
 | 5. Notifications (outbox, real providers) | Planned | — |
 | 6. Discovery, favorites, reviews, media | Planned | — |
@@ -51,7 +51,7 @@ Deferred from Phase 0:
 - **Lifecycle:** status transitions and the confirmation mode per branch (ADR-0009); cancellation policies; an expiry job.
 - **Availability:** add blocking appointments to the engine's absences (`AvailabilityService`), and a salon-side availability and booking path (decision #20: every service, no minimum notice).
 - **Clients and views:** `salon_client` (walk-ins and phone bookings), customer and salon appointment views, and the Modulith event registry for `AppointmentBooked`.
-- **Decided for Phase 4 (ADR-0012, decisions 21–24, 2026-11-05):**
+- **Decided for Phase 4 (ADR-0012, decisions 21–26, 2026-11-05):**
   - **21, schedule changes vs. appointments:**
     - Implement `scheduling.BlockingAppointments` in booking. With an implementation in place, the existing checks start rejecting conflicting changes with `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`.
     - Booking takes the salon row lock `FOR SHARE`, so it cannot race a schedule change.
@@ -59,16 +59,27 @@ Deferred from Phase 0:
   - **22, inactive branches:** appointments stay and are not cancelled. Read access follows ADR-0010 unchanged.
   - **23, customer overlap:** no overlapping active appointments per account-linked customer, platform-wide, buffer excluded. Enforced by an application check plus a second exclusion constraint (ADR-0005).
   - **24, customer limit:** at most 5 `PENDING`/`CONFIRMED` future appointments per account-linked customer, platform-wide, staff bookings included. Enforced under a per-customer row lock.
-- **Still open for Phase 4** (not covered by decision 21; recommendation in brackets):
-  - **Override permission:** which permission allows the emergency override. [A new `SCHEDULE_OVERRIDE` permission for OWNER and MANAGER]
-  - **Other changes with future appointments:** staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal. [Treat like decision 21: reject with the same 409, override allowed]
+  - **25, override permission:** a new `APPOINTMENT_CONFLICT_OVERRIDE` permission for OWNER and MANAGER, required in addition to the change's own permission. It is added together with the override.
+  - **26, other changes with future appointments:** staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal. They are rejected with the same 409, and the override is allowed. Move the extension point into the `salons` root so `salons` and `catalog` can use it, with service ids added.
+- **Still open:** nothing for Phase 4 so far.
+
+## Work log
+
+| Date | Work | Commit |
+|---|---|---|
+| 2026-11-04 | CI fix: `mvnw` committed without the executable bit (`./mvnw: Permission denied` on the Linux runner) | `a90cce1` |
+| 2026-11-04 | Phase 3 decision register (decisions 1–20) agreed; Phase 3 implemented: `catalog` and `scheduling` modules, availability engine, ADR-0012 | `47e8537` |
+| 2026-11-04 | Catalog error check: the VS Code "non-exposed type" errors are a stale IDE model (`ModularityTests` passes); `DUPLICATE_SERVICE` moved into `CatalogErrors` | `47e8537` |
+| 2026-11-04 | Pre-Phase-4 checks: CI green, `mvnw` line endings and mode, build time (~3 min vs. 20 min limit), first real start of the app (`local` profile, migrations, OpenAPI with all Phase 3 paths), test-log warnings. Adjustments: `INVALID_SERVICES` moved into `SchedulingErrors`; hours kept at a branch a staff member left are now tested and documented | uncommitted |
+| 2026-11-05 | Decisions 21–24 recorded. Decision 21 boundary built: extension point `scheduling.BlockingAppointments`, checks on opening hours, special days, closures, working hours and time off (`409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`); `ApiException` problem properties; time-off creation takes the salon lock; 13 new tests (506 total) | uncommitted |
+| 2026-11-05 | Decisions 25 (override permission) and 26 (staff and catalog changes) recorded; docs reviewed for stale statements | uncommitted |
 
 ## Open product decisions
 
 | Topic | Current behavior | Recommendation / when |
 |---|---|---|
 | Client privacy for receptionists and staff | No client records yet | Branch-scoped roles see clients with appointments in their branches (Phase 4, ADR-0010) |
-| Schedule changes with existing appointments | **Decided (21):** reject with `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`; explicit emergency override with reason. Validation boundary built; inactive until booking implements `BlockingAppointments` | Override permission and other change types: Phase 4 (see above) |
+| Changes that conflict with existing appointments | **Decided (21, 25, 26):** reject with `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`. OWNER and MANAGER can override with a reason (`APPOINTMENT_CONFLICT_OVERRIDE`). Schedule changes are checked already (inactive until booking implements `BlockingAppointments`). Staff and catalog changes follow in Phase 4 | Phase 4 |
 | Appointments in inactive branches | **Decided (22):** kept, not cancelled; normal read access rules | Phase 4 |
 | Customer limits (D19) | **Decided (23, 24):** no platform-wide overlap (buffer excluded); at most 5 active future appointments | Phase 4 |
 | Branch-scoped managers | Managers are salon-wide | Keep, unless explicitly changed (ADR-0010) |

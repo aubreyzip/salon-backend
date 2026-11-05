@@ -13,6 +13,6 @@
 | [0009](0009-booking-confirmation-mode.md) | Per-branch booking confirmation, automatic by default | Accepted, implement in Phase 4 |
 | [0010](0010-permission-scopes.md) | Permission scopes: salon-wide, assigned branches, own resources | Accepted, implemented (Phase 2) |
 | [0011](0011-transactional-messaging.md) | Messages delivered after commit through a transactional outbox | Accepted, implement in Phase 5 |
-| [0012](0012-catalog-and-scheduling-model.md) | Catalog, working hours, branch calendars and the availability engine | Accepted, implemented (Phase 3) |
+| [0012](0012-catalog-and-scheduling-model.md) | Catalog, working hours, branch calendars and the availability engine; appointment rules for schedule changes, inactive branches and customer limits (decisions 21–26) | Accepted, implemented (Phase 3); decisions 22–26 and the override in Phase 4 |
 
 New ADRs: next number, same structure (Status, Date, Context, Decision, Consequences). When code changes a decision, update the ADR in the same change.

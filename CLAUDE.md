@@ -49,7 +49,9 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
 - Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model. One exception: an extension interface in a module's root package that a *dependent* module implements, when an answer is needed synchronously and a direct call would be a cycle (ADR-0001; e.g. `scheduling.BlockingAppointments`). Inject all implementations; none means "nothing to report".
-- Schedule changes that remove time (opening hours, special days, closures, working hours, time off) must go through `ScheduleConflicts` (decision 21: `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, listing only the appointments the caller may view). Never silently invalidate appointments.
+- Schedule changes that remove time (opening hours, special days, closures, working hours, time off) must go through `ScheduleConflicts` (decision 21: `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, listing only the appointments the caller may view). Never silently invalidate appointments. Phase 4 extends this to:
+  - staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal (ADR-0012 decision 26);
+  - an explicit override that needs the new `APPOINTMENT_CONFLICT_OVERRIDE` permission (OWNER, MANAGER) plus a reason (decision 25).
 
 ## API conventions
 

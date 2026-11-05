@@ -14,6 +14,10 @@ The project was then generated with Spring Initializr (commit `9f3df55`), and th
 - **Branch opening hours (§5):** moved from the salon module to scheduling (Phase 3).
 - **Districts (ilçe):** stored as text on branches. Only the 81 provinces are seeded reference data.
 - **Salon row lock:** membership changes serialize on a salon row lock (ADR-0002). It is not mentioned in §5.
+- **Customer limits (D19) and schedule changes:** refined in ADR-0012, decisions 21–26:
+  - customer overlap is platform-wide and excludes the staff buffer, enforced by a second exclusion constraint;
+  - at most 5 `PENDING`/`CONFIRMED` future appointments per account-linked customer;
+  - schedule, staff and catalog changes that conflict with appointments are rejected unless a manager overrides.
 - **Catalog and scheduling (§5, §7):** the details are in ADR-0012. They include the platform category taxonomy, explicit offerings and skills, one buffer per booking (the largest), date-bounded working periods, special days and closures, and a public availability endpoint.
 
 **Labels used in this report**

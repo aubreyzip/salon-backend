@@ -56,6 +56,10 @@ What is salon-level (no branch scope):
 - **Phase 4, client privacy:** salon client records are tenant-level. Recommended: branch-scoped roles see only clients with appointments in their branches (via `branchRestriction()`); owners and managers see all.
 - **Inactive branches (decided in Phase 3, ADR-0012 decisions 1 and 22):** they can be fully configured (offerings, hours, schedules) and are not public. Their appointments stay; deactivation does not cancel them or change read access. Branch-scoped members keep reading a branch's appointment history only while their membership is active, their assignment to that branch exists, and they hold the read permission. These are the normal rules of this ADR; inactive branches get no exception.
 
+## Decided for Phase 4 (ADR-0012, decision 25)
+
+- New permission `APPOINTMENT_CONFLICT_OVERRIDE` for OWNER and MANAGER: the emergency override of appointment conflicts. It is required in addition to the permission for the change itself. It is added with the override in Phase 4, not before.
+
 ## Phase 3 usage (ADR-0012)
 
 - Catalog changes use `require(CATALOG_MANAGE)`, branch calendar changes `require(BRANCH_MANAGE)`. Reads are member-wide.

@@ -1,6 +1,6 @@
 # ADR-0012: Catalog and scheduling model
 
-- Status: Accepted (Phase 3 decision register, confirmed 2026-11-04; decisions 21–24 added 2026-11-05), implemented (Phase 3; decisions 22–24 and the override of 21 in Phase 4)
+- Status: Accepted (Phase 3 decision register, confirmed 2026-11-04; decisions 21–26 added 2026-11-05), implemented (Phase 3: decisions 1–20 and the validation boundary of 21; Phase 4: the override of 21 and decisions 22–26)
 - Date: 2026-11-04
 
 ## Context
@@ -70,7 +70,7 @@ DST: local times that do not exist (spring forward) are skipped. Local times tha
 
 Every change also calls `SalonDirectory.ensureModifiable` (suspended salons get `409 SALON_SUSPENDED`). Writes that create per-branch rows or check cross-branch invariants (branch calendar, working hours) lock the salon row first.
 
-### Appointments and schedule changes (decisions 21–24, added 2026-11-05)
+### Appointments and schedule changes (decisions 21–26, added 2026-11-05)
 
 These decisions mainly govern booking (Phase 4). Phase 3 implements only the validation boundary of decision 21; no appointment functionality exists yet.
 
@@ -83,7 +83,7 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
   - creating, changing and removing special days.
 - **What never blocks:** historical, cancelled, rejected, completed, no-show and expired appointments.
 - **No silent invalidation:** existing appointments are never invalidated without someone deciding it.
-- **Emergency override:** a separate, explicit path for authorized managers, with a required reason. It identifies the affected appointments, flags them for resolution, keeps their records, and makes them visible to authorized salon staff. The resolution workflow belongs to Phase 4.
+- **Emergency override:** a separate, explicit path for authorized managers (permission: decision 25), with a required reason. It identifies the affected appointments, flags them for resolution, keeps their records, and makes them visible to authorized salon staff. The resolution workflow belongs to Phase 4.
 - *Implemented in Phase 3* (the validation boundary):
   - The `scheduling` root package defines the extension point `BlockingAppointments`, returning `BlockingAppointment` records. Booking implements it in Phase 4. With no implementation (Phase 3), no change is blocked.
   - The check runs in `ScheduleConflicts` (application) and `ScheduleCoverage` (domain, pure).
@@ -113,6 +113,28 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
 - Applies across all salons and branches.
 - Staff bookings for an account-linked customer count. Unlinked walk-in records do not.
 - *Phase 4 design constraints:* enforce it transactionally. A count alone races, so concurrent bookings by one customer must serialize. Recommended: a booking-owned per-customer row locked `FOR UPDATE` before counting, the same pattern as the salon row lock (ADR-0002). Advisory locks are the fallback.
+
+**25. Permission for the emergency override.** (decided 2026-11-05)
+- A new permission `APPOINTMENT_CONFLICT_OVERRIDE`, granted to OWNER and MANAGER only. Receptionists and staff don't get it.
+- An override needs this permission **in addition** to the permission for the change itself. For example, a stylist can't override conflicts with their own time off.
+- *Phase 4:* add the permission together with the override. Until something uses it, clients would see a permission that does nothing. Adding it to `SalonPermission` is additive in v1; clients must tolerate unknown values. In `StaffRole`, MANAGER gets it automatically as "all but `BILLING_MANAGE`"; the role-permission tests will confirm.
+
+**26. Other changes that affect future appointments.** (decided 2026-11-05)
+- These changes are handled like decision 21: the same `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, with the same body and visibility rules, and the same emergency override (decision 25).
+
+  | Change | Module | Conflicting appointments (future, blocking) |
+  |---|---|---|
+  | Staff deactivation | `salons` | All of the staff member's, any branch |
+  | Branch unassignment | `salons` | The staff member's at the branches removed from their assignment |
+  | `bookable` set to false | `salons` | All of the staff member's |
+  | Skill removal (skills replaced without a service) | `catalog` | The staff member's that include that service |
+  | Service archiving | `catalog` | Any that include the service |
+  | Offering removal | `catalog` | Any at that branch that include the service |
+
+- Not covered: branch deactivation. Under decision 22 it keeps existing appointments and only stops new public bookings. A branch closing for good goes through the conflict-resolution process.
+- *Phase 4 design constraints:*
+  - **Move the extension point down.** These checks live in `salons` and `catalog`, below `scheduling`, so they can't use `scheduling.BlockingAppointments`. Recommended: move the extension point into the `salons` root package, the lowest module that needs it, so booking implements a single interface. Add each appointment's service ids and queries by service.
+  - **Same order of steps.** The checks run after the existing access checks and under the salon row lock. Membership changes already take it (ADR-0002). Catalog changes that run these checks must take it too.
 
 ## Consequences
 
