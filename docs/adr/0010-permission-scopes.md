@@ -53,12 +53,16 @@ What is salon-level (no branch scope):
 
 ## Open decisions for later phases
 
-- **Phase 4, client privacy:** salon client records are tenant-level. Recommended: branch-scoped roles see only clients with appointments in their branches (via `branchRestriction()`); owners and managers see all.
+- **Client privacy (decided in Phase 4, ADR-0013 decision 36):** `CLIENT_VIEW` holders see clients; branch-scoped holders (receptionists) only clients with an appointment in their branches (via `branchRestriction()`), and owners and managers see all. Members without `CLIENT_VIEW` (stylists) see a client's name and phone only on appointments they may view.
 - **Inactive branches (decided in Phase 3, ADR-0012 decisions 1 and 22):** they can be fully configured (offerings, hours, schedules) and are not public. Their appointments stay; deactivation does not cancel them or change read access. Branch-scoped members keep reading a branch's appointment history only while their membership is active, their assignment to that branch exists, and they hold the read permission. These are the normal rules of this ADR; inactive branches get no exception.
 
-## Decided for Phase 4 (ADR-0012, decision 25)
+## Phase 4 usage (ADR-0012 decision 25, ADR-0013)
 
-- New permission `APPOINTMENT_CONFLICT_OVERRIDE` for OWNER and MANAGER: the emergency override of appointment conflicts. It is required in addition to the permission for the change itself. It is added with the override in Phase 4, not before.
+- New permission `APPOINTMENT_CONFLICT_OVERRIDE` (OWNER, and MANAGER as "all but `BILLING_MANAGE`"): the emergency override of appointment conflicts. It is required in addition to the permission for the change itself (`salons.AppointmentConflicts`).
+- New check `TenantAccess.requireAny(salon, user, permissions...)`: salon-level work that any one of the permissions allows (creating a walk-in client: `APPOINTMENT_MANAGE_ANY` or `_OWN`).
+- Appointment reads: `APPOINTMENT_VIEW_ANY` in covered branches, or `APPOINTMENT_VIEW_OWN` for one's own. Appointments the caller may not view are `404 APPOINTMENT_NOT_FOUND`.
+- Appointment changes: `requireForStaffResource(APPOINTMENT_MANAGE_ANY, APPOINTMENT_MANAGE_OWN)` for the appointment's branch and staff member. Salon bookings without a staff member need `requireInBranch(APPOINTMENT_MANAGE_ANY)`.
+- Salon-side availability: `requireInBranch(APPOINTMENT_MANAGE_ANY)`, or `requireForStaffResource(..._ANY, ..._OWN)` with a `staffId`.
 
 ## Phase 3 usage (ADR-0012)
 

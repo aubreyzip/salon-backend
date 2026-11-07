@@ -11,5 +11,8 @@ spring:
       ddl-auto: validate
     properties:
       hibernate:
-        jdbc:
-          time_zone: UTC
+        # Instants bind as UTC OffsetDateTime (Hibernate 7 default TIMESTAMP_UTC), whatever the JVM
+        # zone. Do not set hibernate.jdbc.time_zone: it also shifts LocalTime (TIME columns) by the
+        # JVM offset (ADR-0006).
+        type:
+          preferred_instant_jdbc_type: TIMESTAMP_UTC

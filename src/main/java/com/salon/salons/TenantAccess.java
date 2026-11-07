@@ -48,6 +48,17 @@ public class TenantAccess {
 		return membership;
 	}
 
+	/** Salon-level work that any one of the permissions allows (e.g. creating a client to book). */
+	public SalonMembership requireAny(UUID salonId, UUID userId, SalonPermission... permissions) {
+		SalonMembership membership = requireMember(salonId, userId);
+		for (SalonPermission permission : permissions) {
+			if (membership.has(permission)) {
+				return membership;
+			}
+		}
+		throw SalonErrors.insufficientPermission();
+	}
+
 	public SalonMembership requireInBranch(UUID salonId, UUID branchId, UUID userId, SalonPermission permission) {
 		SalonMembership membership = require(salonId, userId, permission);
 		if (!membership.coversBranch(branchId)) {

@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
@@ -14,7 +15,10 @@ import com.salon.catalog.domain.CatalogErrors;
 import com.salon.catalog.domain.ServiceItemRepository;
 import com.salon.catalog.domain.StaffSkill;
 import com.salon.catalog.domain.StaffSkillRepository;
+import com.salon.salons.AppointmentConflicts;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonDirectory;
+import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
 import com.salon.salons.TenantAccess;
 import org.springframework.stereotype.Service;
@@ -36,16 +40,19 @@ public class StaffSkillService {
 
 	private final SalonDirectory directory;
 
+	private final AppointmentConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
 	StaffSkillService(StaffSkillRepository skills, ServiceItemRepository services, TenantAccess access,
-			SalonDirectory directory, AuditLog auditLog, Clock clock) {
+			SalonDirectory directory, AppointmentConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.skills = skills;
 		this.services = services;
 		this.access = access;
 		this.directory = directory;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -60,9 +67,14 @@ public class StaffSkillService {
 		return skills.findBySalonIdAndStaffId(salonId, staffId).stream().map(SkillView::of).toList();
 	}
 
-	/** Replaces all skills of the staff member. */
-	public List<SkillView> replace(UUID salonId, UUID staffId, UUID userId, List<SkillAssignment> assignments) {
-		access.require(salonId, userId, SalonPermission.CATALOG_MANAGE);
+	/**
+	 * Replaces all skills of the staff member. Removing a skill conflicts with the staff member's
+	 * future appointments that include the service (ADR-0012 decision 26), so the salon row is locked.
+	 */
+	public List<SkillView> replace(UUID salonId, UUID staffId, UUID userId, List<SkillAssignment> assignments,
+			ConflictOverride override) {
+		directory.lockSalon(salonId);
+		SalonMembership caller = access.require(salonId, userId, SalonPermission.CATALOG_MANAGE);
 		directory.ensureModifiable(salonId);
 		checkStaff(salonId, staffId);
 		Set<UUID> serviceIds = new HashSet<>();
@@ -73,6 +85,16 @@ public class StaffSkillService {
 		}
 		if (services.findBySalonIdAndIdIn(salonId, serviceIds).size() != serviceIds.size()) {
 			throw CatalogErrors.serviceNotInSalon();
+		}
+		Set<UUID> removed = skills.findBySalonIdAndStaffId(salonId, staffId)
+			.stream()
+			.map(StaffSkill::getServiceId)
+			.filter(serviceId -> !serviceIds.contains(serviceId))
+			.collect(Collectors.toSet());
+		if (!removed.isEmpty()) {
+			conflicts.check(caller, conflicts.ofStaff(salonId, staffId),
+					appointment -> appointment.serviceIds().stream().anyMatch(removed::contains), override,
+					"skill removal");
 		}
 
 		skills.deleteBySalonIdAndStaffId(salonId, staffId);

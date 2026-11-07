@@ -17,7 +17,9 @@ import java.util.UUID;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
+import com.salon.salons.BlockingAppointment;
 import com.salon.salons.BranchInfo;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonDirectory;
 import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
@@ -25,7 +27,6 @@ import com.salon.salons.StaffInfo;
 import com.salon.salons.TenantAccess;
 import com.salon.scheduling.application.SchedulingViews.PeriodView;
 import com.salon.scheduling.application.SchedulingViews.WorkingHoursView;
-import com.salon.scheduling.BlockingAppointment;
 import com.salon.scheduling.domain.DateRange;
 import com.salon.scheduling.domain.ScheduleCoverage;
 import com.salon.scheduling.domain.SchedulingErrors;
@@ -99,7 +100,7 @@ public class WorkingHoursService {
 	 * Replaces the staff member's working hours at one branch. An empty list removes them.
 	 */
 	public WorkingHoursView replace(UUID salonId, UUID staffId, UUID branchId, UUID userId,
-			List<PeriodInput> inputs) {
+			List<PeriodInput> inputs, ConflictOverride override) {
 		directory.lockSalon(salonId);
 		SalonMembership caller = access.requireForStaffResource(salonId, branchId, staffId, userId,
 				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN);
@@ -134,7 +135,7 @@ public class WorkingHoursService {
 			}
 		}
 		checkAppointments(caller, salonId, staffId, branch,
-				existing.stream().filter(period -> period.getBranchId().equals(branchId)).toList(), replacement);
+				existing.stream().filter(period -> period.getBranchId().equals(branchId)).toList(), replacement, override);
 
 		periods.deleteAll(existing.stream().filter(period -> period.getBranchId().equals(branchId)).toList());
 		periods.flush();
@@ -146,7 +147,7 @@ public class WorkingHoursService {
 
 	/** Decision 21: the new hours must still cover the staff member's appointments at the branch. */
 	private void checkAppointments(SalonMembership caller, UUID salonId, UUID staffId, BranchInfo branch,
-			List<WorkingPeriod> before, List<WorkingPeriod> after) {
+			List<WorkingPeriod> before, List<WorkingPeriod> after, ConflictOverride override) {
 		List<BlockingAppointment> appointments = conflicts.ofStaff(salonId, staffId, branch.id());
 		if (appointments.isEmpty()) {
 			return;
@@ -154,11 +155,11 @@ public class WorkingHoursService {
 		List<WorkingPattern> oldHours = before.stream().map(WorkingPeriod::pattern).toList();
 		List<WorkingPattern> newHours = after.stream().map(WorkingPeriod::pattern).toList();
 		ZoneId zone = branch.timeZone();
-		conflicts.reject(caller, appointments, appointment -> {
+		conflicts.check(caller, appointments, appointment -> {
 			LocalDate date = LocalDate.ofInstant(appointment.start(), zone);
 			return ScheduleCoverage.losesCoverage(WorkingPattern.hoursOn(oldHours, date),
 					WorkingPattern.hoursOn(newHours, date), zone, appointment.start(), appointment.blockEnd());
-		});
+		}, override, "working hours change");
 	}
 
 	private static void checkNoDateOverlap(List<WorkingPeriod> sortedByStart) {

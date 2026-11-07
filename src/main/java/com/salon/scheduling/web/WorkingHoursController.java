@@ -9,6 +9,7 @@ import com.salon.scheduling.application.WorkingHoursService;
 import com.salon.scheduling.application.WorkingHoursService.PeriodInput;
 import com.salon.scheduling.domain.DateRange;
 import com.salon.scheduling.web.IntervalRequests.WeeklyIntervalRequest;
+import com.salon.salons.ConflictOverride;
 import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -47,10 +48,11 @@ class WorkingHoursController {
 	WorkingHoursView replace(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId,
 			@PathVariable UUID branchId, @Valid @RequestBody WorkingHoursRequest request) {
 		return workingHours.replace(salonId, staffId, branchId, userId,
-				request.periods().stream().map(PeriodRequest::toInput).toList());
+				request.periods().stream().map(PeriodRequest::toInput).toList(), request.conflictOverride());
 	}
 
-	record WorkingHoursRequest(@NotNull @Size(max = 20) List<@NotNull @Valid PeriodRequest> periods) {
+	record WorkingHoursRequest(@NotNull @Size(max = 20) List<@NotNull @Valid PeriodRequest> periods,
+			@Valid ConflictOverride conflictOverride) {
 	}
 
 	/**

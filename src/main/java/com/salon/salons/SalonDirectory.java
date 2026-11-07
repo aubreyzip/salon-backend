@@ -52,6 +52,17 @@ public class SalonDirectory {
 	}
 
 	/**
+	 * Locks the salon row in share mode until the caller's transaction ends. Bookings take it, so
+	 * they wait for schedule, staff and catalog changes (which take {@link #lockSalon}) and the
+	 * reverse, without blocking each other (ADR-0013).
+	 * @throws com.salon.shared.ApiException {@code 404 SALON_NOT_FOUND} if the salon does not exist
+	 */
+	@Transactional(propagation = Propagation.MANDATORY)
+	public void lockSalonShared(UUID salonId) {
+		salons.findByIdForShare(salonId).orElseThrow(SalonErrors::salonNotFound);
+	}
+
+	/**
 	 * @throws com.salon.shared.ApiException {@code 409 SALON_SUSPENDED} if the salon is suspended
 	 */
 	public void ensureModifiable(UUID salonId) {
@@ -83,7 +94,8 @@ public class SalonDirectory {
 		var policy = branch.getBookingPolicy();
 		return new BranchInfo(branch.getId(), branch.getSalonId(), branch.getName(), ZoneId.of(branch.getTimeZone()),
 				branch.isActive(), salonActive, policy.slotIntervalMinutes(), policy.minNoticeMinutes(),
-				policy.maxAdvanceDays());
+				policy.maxAdvanceDays(), policy.autoConfirm(), policy.cancellationCutoffMinutes(),
+				policy.pendingConfirmationTimeoutMinutes());
 	}
 
 	private static StaffInfo info(StaffMember member) {

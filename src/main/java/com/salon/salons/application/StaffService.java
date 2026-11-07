@@ -9,6 +9,8 @@ import java.util.stream.Collectors;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
+import com.salon.salons.AppointmentConflicts;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
 import com.salon.salons.StaffRole;
@@ -51,19 +53,22 @@ public class StaffService {
 
 	private final TenantAccess access;
 
+	private final AppointmentConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
 	StaffService(StaffMemberRepository staff, BranchRepository branches, SalonRepository salons,
 			StaffInvitationRepository invitations, InvitationService invitationService, TenantAccess access,
-			AuditLog auditLog, Clock clock) {
+			AppointmentConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.staff = staff;
 		this.branches = branches;
 		this.salons = salons;
 		this.invitations = invitations;
 		this.invitationService = invitationService;
 		this.access = access;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -107,8 +112,12 @@ public class StaffService {
 		return view(member, invited);
 	}
 
+	/**
+	 * @param override explicit override of conflicts with appointments (ADR-0012 decision 26), or
+	 * {@code null}
+	 */
 	public StaffView update(UUID salonId, UUID staffId, UUID userId, StaffProfile profile, StaffRole role,
-			Set<UUID> branchIds) {
+			Set<UUID> branchIds, ConflictOverride override) {
 		Salon salon = lockSalon(salonId);
 		SalonMembership actor = access.require(salonId, userId, SalonPermission.STAFF_MANAGE);
 		salon.ensureModifiable();
@@ -118,6 +127,7 @@ public class StaffService {
 			ensureAnotherOwner(member);
 		}
 		checkBranches(salonId, branchIds);
+		checkAppointmentsOnUpdate(actor, member, profile, branchIds, override);
 
 		Instant now = clock.instant();
 		member.updateProfile(profile, now);
@@ -127,7 +137,11 @@ public class StaffService {
 		return view(member, hasPendingInvitation(salonId, staffId));
 	}
 
-	public StaffView deactivate(UUID salonId, UUID staffId, UUID userId) {
+	/**
+	 * @param override explicit override of conflicts with appointments (ADR-0012 decision 26), or
+	 * {@code null}
+	 */
+	public StaffView deactivate(UUID salonId, UUID staffId, UUID userId, ConflictOverride override) {
 		Salon salon = lockSalon(salonId);
 		SalonMembership actor = access.require(salonId, userId, SalonPermission.STAFF_MANAGE);
 		salon.ensureModifiable();
@@ -135,6 +149,10 @@ public class StaffService {
 		checkMayManage(actor, member, member.getRole());
 		if (member.getRole() == StaffRole.OWNER) {
 			ensureAnotherOwner(member);
+		}
+		if (member.isActive()) {
+			conflicts.check(actor, conflicts.ofStaff(salonId, staffId), appointment -> true, override,
+					"staff deactivation");
 		}
 		Instant now = clock.instant();
 		member.deactivate(now);
@@ -193,6 +211,25 @@ public class StaffService {
 			throw SalonErrors.staffInactive();
 		}
 		invitationService.invite(salon, member, email, userId, clock.instant());
+	}
+
+	/**
+	 * Decision 26: turning {@code bookable} off conflicts with all of the staff member's future
+	 * appointments; removing a branch assignment with those at the removed branches.
+	 */
+	private void checkAppointmentsOnUpdate(SalonMembership actor, StaffMember member, StaffProfile profile,
+			Set<UUID> branchIds, ConflictOverride override) {
+		boolean bookableOff = member.isBookable() && !profile.bookable();
+		Set<UUID> removedBranches = member.getBranchIds()
+			.stream()
+			.filter(branchId -> !branchIds.contains(branchId))
+			.collect(Collectors.toSet());
+		if (!member.isActive() || (!bookableOff && removedBranches.isEmpty())) {
+			return;
+		}
+		conflicts.check(actor, conflicts.ofStaff(member.getSalonId(), member.getId()),
+				appointment -> bookableOff || removedBranches.contains(appointment.branchId()), override,
+				bookableOff ? "staff not bookable" : "staff branch unassignment");
 	}
 
 	private static void checkMayManage(SalonMembership actor, StaffMember target, StaffRole newRole) {

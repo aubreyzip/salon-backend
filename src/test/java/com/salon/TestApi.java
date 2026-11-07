@@ -4,11 +4,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.jayway.jsonpath.JsonPath;
 import com.salon.RecordingMessagingConfiguration.RecordingEmailGateway;
+import com.salon.RecordingMessagingConfiguration.RecordingSmsGateway;
 import com.salon.identity.domain.PlatformRole;
 import com.salon.identity.domain.UserAccountRepository;
 import com.salon.messaging.EmailMessage;
@@ -36,14 +38,17 @@ public class TestApi {
 
 	private final RecordingEmailGateway emails;
 
+	private final RecordingSmsGateway sms;
+
 	private final UserAccountRepository users;
 
 	private final TransactionTemplate transactionTemplate;
 
-	TestApi(MockMvc mvc, RecordingEmailGateway emails, UserAccountRepository users,
+	TestApi(MockMvc mvc, RecordingEmailGateway emails, RecordingSmsGateway sms, UserAccountRepository users,
 			TransactionTemplate transactionTemplate) {
 		this.mvc = mvc;
 		this.emails = emails;
+		this.sms = sms;
 		this.users = users;
 		this.transactionTemplate = transactionTemplate;
 	}
@@ -64,6 +69,27 @@ public class TestApi {
 				{"email": "%s", "code": "%s"}
 				""".formatted(email, emails.lastCodeSentTo(email))).andExpect(status().isNoContent());
 		return signIn(email);
+	}
+
+	/**
+	 * A customer who may book online: signed up, with a verified phone (ADR-0007).
+	 */
+	public TestUser signUpCustomer(String displayName) throws Exception {
+		TestUser user = signUp(displayName);
+		verifyPhone(user, uniqueMobile());
+		return user;
+	}
+
+	/** Verifies the phone number through the SMS code flow. */
+	public void verifyPhone(TestUser user, String e164) throws Exception {
+		post(user.accessToken(), "/api/v1/me/phone", "{\"phone\": \"" + e164 + "\"}").andExpect(status().isAccepted());
+		post(user.accessToken(), "/api/v1/me/phone/verify", "{\"code\": \"" + sms.lastCodeSentTo(e164) + "\"}")
+			.andExpect(status().isNoContent());
+	}
+
+	/** A random Turkish mobile number in E.164. */
+	public static String uniqueMobile() {
+		return "+90532" + String.format("%07d", ThreadLocalRandom.current().nextInt(10_000_000));
 	}
 
 	public static String uniqueEmail() {
@@ -171,6 +197,24 @@ public class TestApi {
 
 	public ResultActions delete(String accessToken, String path) throws Exception {
 		return perform(HttpMethod.DELETE, accessToken, path, null);
+	}
+
+	/** A request with an {@code Idempotency-Key} header (booking, rescheduling). */
+	public ResultActions performWithKey(HttpMethod method, String accessToken, String path, String json,
+			String idempotencyKey) throws Exception {
+		MockHttpServletRequestBuilder request = request(method, path).header("Idempotency-Key", idempotencyKey);
+		if (accessToken != null) {
+			request.header("Authorization", "Bearer " + accessToken);
+		}
+		if (json != null) {
+			request.contentType(MediaType.APPLICATION_JSON).content(json);
+		}
+		return mvc.perform(request);
+	}
+
+	/** POST with a fresh {@code Idempotency-Key}. */
+	public ResultActions postWithKey(String accessToken, String path, String json) throws Exception {
+		return performWithKey(HttpMethod.POST, accessToken, path, json, UUID.randomUUID().toString());
 	}
 
 	public ResultActions perform(HttpMethod method, String accessToken, String path, String json) throws Exception {

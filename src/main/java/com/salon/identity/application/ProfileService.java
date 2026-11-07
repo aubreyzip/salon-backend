@@ -8,7 +8,7 @@ import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
 import com.salon.identity.domain.ChallengeChannel;
 import com.salon.identity.domain.ChallengePurpose;
-import com.salon.identity.domain.PhoneNumbers;
+import com.salon.shared.PhoneNumbers;
 import com.salon.identity.domain.PlatformRole;
 import com.salon.identity.domain.UserAccount;
 import com.salon.identity.domain.UserAccountRepository;

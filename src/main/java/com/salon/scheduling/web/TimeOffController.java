@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.salon.scheduling.application.SchedulingViews.TimeOffView;
 import com.salon.scheduling.application.TimeOffService;
+import com.salon.salons.ConflictOverride;
 import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -49,7 +50,8 @@ class TimeOffController {
 	TimeOffView create(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId,
 			@Valid @RequestBody TimeOffRequest request) {
 		return timeOff.create(salonId, staffId, userId, request.startAt(), request.endAt(),
-				request.reason() == null || request.reason().isBlank() ? null : request.reason().strip());
+				request.reason() == null || request.reason().isBlank() ? null : request.reason().strip(),
+				request.conflictOverride());
 	}
 
 	@DeleteMapping("/{timeOffId}")
@@ -59,7 +61,8 @@ class TimeOffController {
 		timeOff.delete(salonId, staffId, timeOffId, userId);
 	}
 
-	record TimeOffRequest(@NotNull Instant startAt, @NotNull Instant endAt, @Size(max = 200) String reason) {
+	record TimeOffRequest(@NotNull Instant startAt, @NotNull Instant endAt, @Size(max = 200) String reason,
+			@Valid ConflictOverride conflictOverride) {
 	}
 
 }

@@ -14,7 +14,11 @@ The first market is Turkey (fixed UTC+3 since 2016), but the product should not 
 - Weekly patterns: `DayOfWeek` + `LocalTime`, PostgreSQL `smallint` + `time`.
 - Calendar days chosen by a user: `LocalDate`, interpreted in the **branch's** time zone.
 - Every branch stores an IANA `time_zone` (e.g. `Europe/Istanbul`). All local-to-instant conversion goes through `ZoneId`. Never assume a fixed offset.
-- JVM, containers and JDBC sessions run in UTC (`hibernate.jdbc.time_zone=UTC`). `LocalDateTime` is never used for moments.
+- Containers run in UTC. Correctness must not depend on the JVM's default zone (developer machines differ):
+  - `Instant` binds as a UTC `OffsetDateTime` (`hibernate.type.preferred_instant_jdbc_type=TIMESTAMP_UTC`).
+  - `LocalTime` and `LocalDate` are stored exactly as entered.
+  - `hibernate.jdbc.time_zone` must **not** be set: it also converts `time` values by the JVM offset. Corrected 2026-11-07: with it, 09:00 was stored as 06:00 on a +03:00 JVM, and 00:00–23:59 violated the order CHECK. Regression test: `LocalTimeStorageIntegrationTests`.
+- `LocalDateTime` is never used for moments.
 - Code that needs "now" takes an injectable `Clock`.
 
 **Money**

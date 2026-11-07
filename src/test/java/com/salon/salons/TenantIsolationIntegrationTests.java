@@ -53,7 +53,12 @@ class TenantIsolationIntegrationTests {
 	 * Path placeholders: {salon}, {branch}, {staff} refer to salon A's resources.
 	 */
 	record Endpoint(HttpMethod method, String path, String body, int owner, int manager, int receptionist,
-			int stylist, int outsider, int anonymous) {
+			int stylist, int outsider, int anonymous, boolean idempotencyKey) {
+
+		Endpoint(HttpMethod method, String path, String body, int owner, int manager, int receptionist, int stylist,
+				int outsider, int anonymous) {
+			this(method, path, body, owner, manager, receptionist, stylist, outsider, anonymous, false);
+		}
 
 		int expectedFor(Caller caller) {
 			return switch (caller) {
@@ -108,6 +113,12 @@ class TenantIsolationIntegrationTests {
 
 	private UUID sectionA;
 
+	/** Offered at {branch} for the whole class (never removed by a matrix case). */
+	private UUID offeredA;
+
+	/** An id that exists nowhere: appointment and client endpoints by id. */
+	private final UUID unknown = UUID.randomUUID();
+
 	private String ownerToken;
 
 	private UUID salonB;
@@ -132,6 +143,8 @@ class TenantIsolationIntegrationTests {
 		serviceA = api.createService(owner, salonA, "Cut", 30);
 		sectionA = UUID.fromString(TestApi.read(api.post(owner.accessToken(), "/api/v1/salons/" + salonA
 				+ "/service-sections", "{\"name\": \"Saç\"}"), "$.id"));
+		offeredA = api.createService(owner, salonA, "Availability Cut", 30);
+		api.put(owner.accessToken(), "/api/v1/salons/" + salonA + "/services/" + offeredA + "/branches/" + branchA, "{}");
 		ownerToken = owner.accessToken();
 
 		salonB = api.createSalon(outsider, "Tenant B");
@@ -213,7 +226,40 @@ class TenantIsolationIntegrationTests {
 				new Endpoint(HttpMethod.GET, "/salons/{salon}/staff/{staff}/time-off", null, 200, 200, 403, 403, 404,
 						401),
 				new Endpoint(HttpMethod.POST, "/salons/{salon}/staff/{staff}/time-off", TIME_OFF_JSON, 201, 201, 403,
-						403, 404, 401));
+						403, 404, 401),
+				// Booking (ADR-0013): appointment reads per ADR-0010, clients need CLIENT_VIEW
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/appointments", null, 200, 200, 200, 200, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments", """
+						{"branchId": "{branch}", "clientId": "{unknown}", "serviceIds": ["{offered}"],
+						 "start": "2030-01-07T09:00:00Z"}
+						""", 404, 404, 403, 403, 404, 401, true),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/appointments/{unknown}", null, 404, 404, 404, 404, 404,
+						401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/confirm", null, 404, 404, 404, 404,
+						404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/reject", null, 404, 404, 404, 404,
+						404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/cancel",
+						"{\"reason\": \"Matrix\"}", 404, 404, 404, 404, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/reschedule",
+						"{\"start\": \"2030-01-07T09:00:00Z\"}", 404, 404, 404, 404, 404, 401, true),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/complete", null, 404, 404, 404,
+						404, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/no-show", null, 404, 404, 404, 404,
+						404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/appointments/{unknown}/resolve-attention", null, 404, 404,
+						404, 404, 404, 401),
+				new Endpoint(HttpMethod.PUT, "/salons/{salon}/appointments/{unknown}/internal-note",
+						"{\"note\": \"Matrix\"}", 404, 404, 404, 404, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/clients", null, 200, 200, 200, 403, 404, 401),
+				new Endpoint(HttpMethod.GET, "/salons/{salon}/clients/{unknown}", null, 404, 404, 404, 403, 404, 401),
+				new Endpoint(HttpMethod.POST, "/salons/{salon}/clients", "{\"displayName\": \"Matrix Client\"}", 201,
+						201, 201, 201, 404, 401),
+				// Salon-side availability (decision 20/37): unassigned receptionists and stylists without a
+				// staffId are outside their scope
+				new Endpoint(HttpMethod.GET,
+						"/salons/{salon}/branches/{branch}/availability?serviceIds={offered}&from=2030-01-07&to=2030-01-07",
+						null, 200, 200, 403, 403, 404, 401));
 	}
 
 	/** Endpoints that delete one resource by id: a fresh resource per call, created by the owner. */
@@ -268,7 +314,10 @@ class TenantIsolationIntegrationTests {
 	@ParameterizedTest
 	@MethodSource("endpointsByCaller")
 	void accessIsLimitedToMembersWithPermission(Endpoint endpoint, Caller caller) throws Exception {
-		api.perform(endpoint.method(), tokens.get(caller), resolve(endpoint.path()), resolve(endpoint.body()))
+		(endpoint.idempotencyKey()
+				? api.performWithKey(endpoint.method(), tokens.get(caller), resolve(endpoint.path()),
+						resolve(endpoint.body()), UUID.randomUUID().toString())
+				: api.perform(endpoint.method(), tokens.get(caller), resolve(endpoint.path()), resolve(endpoint.body())))
 			.andExpect(status().is(endpoint.expectedFor(caller)));
 	}
 
@@ -396,7 +445,9 @@ class TenantIsolationIntegrationTests {
 			.replace("{branch}", branchA.toString())
 			.replace("{staff}", unlinkedStaffA.toString())
 			.replace("{service}", serviceA.toString())
-			.replace("{section}", sectionA.toString());
+			.replace("{section}", sectionA.toString())
+			.replace("{offered}", offeredA.toString())
+			.replace("{unknown}", unknown.toString());
 		return resolved.startsWith("/") ? "/api/v1" + resolved : resolved;
 	}
 

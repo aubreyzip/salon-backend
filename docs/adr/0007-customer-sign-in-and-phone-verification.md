@@ -18,5 +18,5 @@ Customers need an account to book online. Salons need a reachable phone number f
 ## Consequences
 
 - An SMS provider is needed in Phase 1. Until one is chosen, a logging stub adapter is used outside production.
-- Booking endpoints must reject customers without a verified phone (clear error code so clients can start verification).
+- Booking endpoints must reject customers without a verified phone (clear error code so clients can start verification). Implemented in Phase 4: online bookings return `403 PHONE_NOT_VERIFIED` (ADR-0013 decision 40). Salon bookings for walk-in clients need no account.
 - Users get a little more friction at first booking, in exchange for fewer fake bookings.

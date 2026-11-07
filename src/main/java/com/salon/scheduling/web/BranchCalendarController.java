@@ -11,6 +11,7 @@ import com.salon.scheduling.application.SchedulingViews.SpecialDayView;
 import com.salon.scheduling.domain.DateRange;
 import com.salon.scheduling.web.IntervalRequests.TimeIntervalRequest;
 import com.salon.scheduling.web.IntervalRequests.WeeklyIntervalRequest;
+import com.salon.salons.ConflictOverride;
 import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -53,7 +54,7 @@ class BranchCalendarController {
 	OpeningHoursView replaceOpeningHours(@CurrentUserId UUID userId, @PathVariable UUID salonId,
 			@PathVariable UUID branchId, @Valid @RequestBody OpeningHoursRequest request) {
 		return calendar.replaceOpeningHours(salonId, branchId, userId,
-				request.intervals().stream().map(WeeklyIntervalRequest::toInterval).toList());
+				request.intervals().stream().map(WeeklyIntervalRequest::toInterval).toList(), request.conflictOverride());
 	}
 
 	/** Special days from {@code from} (default today) to {@code to} (default one year later). */
@@ -70,15 +71,17 @@ class BranchCalendarController {
 			@PathVariable @DateTimeFormat(iso = ISO.DATE) LocalDate date,
 			@Valid @RequestBody SpecialDayRequest request) {
 		return calendar.putSpecialDay(salonId, branchId, date, userId,
-				request.intervals().stream().map(TimeIntervalRequest::toInterval).toList(), blankToNull(request.note()));
+				request.intervals().stream().map(TimeIntervalRequest::toInterval).toList(), blankToNull(request.note()),
+				request.conflictOverride());
 	}
 
 	/** The weekly hours apply again on this date. */
 	@DeleteMapping("/special-days/{date}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void deleteSpecialDay(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID branchId,
-			@PathVariable @DateTimeFormat(iso = ISO.DATE) LocalDate date) {
-		calendar.deleteSpecialDay(salonId, branchId, date, userId);
+			@PathVariable @DateTimeFormat(iso = ISO.DATE) LocalDate date,
+			@Valid @RequestBody(required = false) ConflictOverride.Body body) {
+		calendar.deleteSpecialDay(salonId, branchId, date, userId, ConflictOverride.Body.of(body));
 	}
 
 	/** Closures ending on or after {@code from} (default today). */
@@ -93,7 +96,7 @@ class BranchCalendarController {
 	ClosureView createClosure(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID branchId,
 			@Valid @RequestBody ClosureRequest request) {
 		return calendar.createClosure(salonId, branchId, userId, new DateRange(request.startDate(), request.endDate()),
-				blankToNull(request.reason()));
+				blankToNull(request.reason()), request.conflictOverride());
 	}
 
 	@DeleteMapping("/closures/{closureId}")
@@ -103,14 +106,16 @@ class BranchCalendarController {
 		calendar.deleteClosure(salonId, branchId, closureId, userId);
 	}
 
-	record OpeningHoursRequest(@NotNull @Size(max = 50) List<@NotNull @Valid WeeklyIntervalRequest> intervals) {
+	record OpeningHoursRequest(@NotNull @Size(max = 50) List<@NotNull @Valid WeeklyIntervalRequest> intervals,
+			@Valid ConflictOverride conflictOverride) {
 	}
 
 	record SpecialDayRequest(@NotNull @Size(max = 10) List<@NotNull @Valid TimeIntervalRequest> intervals,
-			@Size(max = 200) String note) {
+			@Size(max = 200) String note, @Valid ConflictOverride conflictOverride) {
 	}
 
-	record ClosureRequest(@NotNull LocalDate startDate, @NotNull LocalDate endDate, @Size(max = 200) String reason) {
+	record ClosureRequest(@NotNull LocalDate startDate, @NotNull LocalDate endDate, @Size(max = 200) String reason,
+			@Valid ConflictOverride conflictOverride) {
 	}
 
 	private static String blankToNull(String value) {

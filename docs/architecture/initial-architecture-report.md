@@ -18,6 +18,12 @@ The project was then generated with Spring Initializr (commit `9f3df55`), and th
   - customer overlap is platform-wide and excludes the staff buffer, enforced by a second exclusion constraint;
   - at most 5 `PENDING`/`CONFIRMED` future appointments per account-linked customer;
   - schedule, staff and catalog changes that conflict with appointments are rejected unless a manager overrides.
+- **Booking (§7, D8, D14, D15):** the details are in ADR-0013, decisions 27–41.
+  - The customer endpoint is `POST /api/v1/me/appointments`, not `/branches/{id}/appointments`.
+  - There is no automatic completion (§7 "marks past CONFIRMED ones as completable"): staff record `COMPLETED` or `NO_SHOW`.
+  - Salon clients (D8) and client privacy (D15) are as in decisions 35 and 36; the cancellation cutoff (D14) is per branch, default 2 hours.
+  - The history table is `appointment_history`, not `appointment_event`.
+- **Time zone setting (§7 "Time representation"):** `hibernate.jdbc.time_zone=UTC` must not be set. It shifted `time` values by the JVM offset. Instants use `TIMESTAMP_UTC` instead (ADR-0006).
 - **Catalog and scheduling (§5, §7):** the details are in ADR-0012. They include the platform category taxonomy, explicit offerings and skills, one buffer per booking (the largest), date-bounded working periods, special days and closures, and a public availability endpoint.
 
 **Labels used in this report**

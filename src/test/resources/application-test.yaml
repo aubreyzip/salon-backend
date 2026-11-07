@@ -5,3 +5,7 @@ salon:
   identity:
     # Tests request several codes in quick succession; hourly limits still apply.
     code-resend-interval: PT0S
+  booking:
+    jobs:
+      # Tests run the booking jobs directly (BookingJobs).
+      enabled: false

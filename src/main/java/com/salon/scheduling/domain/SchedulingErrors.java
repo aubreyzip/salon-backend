@@ -42,6 +42,10 @@ public final class SchedulingErrors {
 		return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TIME_RANGE", detail);
 	}
 
+	public static ApiException invalidStart(String detail) {
+		return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_START", detail);
+	}
+
 	public static ApiException invalidServices(int maxServices) {
 		return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SERVICES",
 				"Request between 1 and " + maxServices + " services.");

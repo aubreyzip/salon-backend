@@ -10,6 +10,7 @@ import java.util.UUID;
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
 import com.salon.salons.BranchInfo;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonDirectory;
 import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
@@ -85,12 +86,12 @@ public class BranchCalendarService {
 
 	/** Replaces the weekly opening hours. An empty list means the branch is closed every day. */
 	public OpeningHoursView replaceOpeningHours(UUID salonId, UUID branchId, UUID userId,
-			List<WeeklyInterval> intervals) {
+			List<WeeklyInterval> intervals, ConflictOverride override) {
 		Managed managed = checkManage(salonId, branchId, userId);
 		BranchInfo branch = managed.branch();
 		var newHours = WeeklyInterval.byDay(intervals);
 		conflicts.checkBranchChange(managed.caller(), salonId, branchId, branch.timeZone(),
-				calendar -> calendar.withOpeningHours(newHours));
+				calendar -> calendar.withOpeningHours(newHours), override, "opening hours change");
 		Instant now = clock.instant();
 		BranchHours branchHours = hours.findBySalonIdAndBranchId(salonId, branchId)
 			.orElseGet(() -> new BranchHours(salonId, branchId, now));
@@ -116,11 +117,11 @@ public class BranchCalendarService {
 
 	/** Sets the hours of one date, replacing the weekly hours. No intervals: closed that day. */
 	public SpecialDayView putSpecialDay(UUID salonId, UUID branchId, LocalDate date, UUID userId,
-			List<TimeInterval> intervals, String note) {
+			List<TimeInterval> intervals, String note, ConflictOverride override) {
 		Managed managed = checkManage(salonId, branchId, userId);
 		List<TimeInterval> sorted = TimeInterval.sortedNonOverlapping(intervals);
 		conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
-				calendar -> calendar.withSpecialDay(date, sorted));
+				calendar -> calendar.withSpecialDay(date, sorted), override, "special day change");
 		SpecialDay day = specialDays.findBySalonIdAndBranchIdAndOnDate(salonId, branchId, date)
 			.orElseGet(() -> new SpecialDay(salonId, branchId, date));
 		day.change(intervals, note, clock.instant());
@@ -130,12 +131,13 @@ public class BranchCalendarService {
 	}
 
 	/** Removes the special hours of a date, so the weekly hours apply again. Idempotent. */
-	public void deleteSpecialDay(UUID salonId, UUID branchId, LocalDate date, UUID userId) {
+	public void deleteSpecialDay(UUID salonId, UUID branchId, LocalDate date, UUID userId,
+			ConflictOverride override) {
 		Managed managed = checkManage(salonId, branchId, userId);
 		specialDays.findBySalonIdAndBranchIdAndOnDate(salonId, branchId, date).ifPresent(day -> {
 			// The weekly hours may be shorter than the special day's.
 			conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
-					calendar -> calendar.withoutSpecialDay(date));
+					calendar -> calendar.withoutSpecialDay(date), override, "special day removal");
 			specialDays.delete(day);
 			audit(userId, salonId, branchId, "scheduling.special_day.removed", date.toString());
 		});
@@ -155,13 +157,14 @@ public class BranchCalendarService {
 			.toList();
 	}
 
-	public ClosureView createClosure(UUID salonId, UUID branchId, UUID userId, DateRange dates, String reason) {
+	public ClosureView createClosure(UUID salonId, UUID branchId, UUID userId, DateRange dates, String reason,
+			ConflictOverride override) {
 		Managed managed = checkManage(salonId, branchId, userId);
 		if (dates.end() != null && ChronoUnit.DAYS.between(dates.start(), dates.end()) >= MAX_LIST_DAYS) {
 			throw SchedulingErrors.invalidDateRange("A closure can be at most 366 days long.");
 		}
 		conflicts.checkBranchChange(managed.caller(), salonId, branchId, managed.branch().timeZone(),
-				calendar -> calendar.withClosure(dates));
+				calendar -> calendar.withClosure(dates), override, "closure");
 		BranchClosure closure = closures.save(new BranchClosure(salonId, branchId, dates, reason, clock.instant()));
 		audit(userId, salonId, branchId, "scheduling.closure.created", dates.start() + ".." + dates.end());
 		return ClosureView.of(closure);

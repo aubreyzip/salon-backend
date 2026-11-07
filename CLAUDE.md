@@ -37,21 +37,27 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Reference other modules' data by ID only. No JPA associations across modules.
 - Cross-module side effects go through domain events + `@ApplicationModuleListener`. Listeners must be idempotent.
 - `ModularityTests` must stay green. Never weaken it to make a change pass.
-- `shared` holds only small cross-cutting primitives: `BaseEntity`, `Ids`, `ApiException`, `CurrentUserId`, `SecureTokens`, `EmailAddresses`, error handling, `Clock`, paging config. No business logic.
+- `shared` holds only small cross-cutting primitives: `BaseEntity`, `Ids`, `ApiException`, `CurrentUserId`, `SecureTokens`, `EmailAddresses`, `PhoneNumbers` (Turkish mobile to E.164, masking), error handling, `Clock`, paging config. No business logic.
 - Current modules and their public (root-package) APIs:
   - `identity`: accounts, tokens, security config. Public: `UserDirectory`, `UserSummary`.
   - `audit`: `AuditLog`, `AuditRecord`.
   - `messaging`: `EmailGateway`, `SmsGateway` (logging placeholders until providers are chosen).
-  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules), `BranchInfo`, `StaffInfo`.
+  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules, `lockSalonShared` for bookings), `BranchInfo`, `StaffInfo`, extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking), `AppointmentConflicts` (the shared 409 and override), `ConflictOverride`.
   - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
-  - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking in Phase 4).
-- Dependencies: `salons ← catalog ← scheduling`. `salons` must not depend on either.
+  - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: `BookableSlots` (one exact start, customer or salon rules).
+  - `booking`: appointments, salon clients, idempotency, lifecycle and expiry jobs (ADR-0013). Public: `AppointmentEvent` (domain events, ids only).
+- Dependencies: `salons ← catalog ← scheduling ← booking`. Lower modules must not depend on higher ones.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
-- Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model. One exception: an extension interface in a module's root package that a *dependent* module implements, when an answer is needed synchronously and a direct call would be a cycle (ADR-0001; e.g. `scheduling.BlockingAppointments`). Inject all implementations; none means "nothing to report".
-- Schedule changes that remove time (opening hours, special days, closures, working hours, time off) must go through `ScheduleConflicts` (decision 21: `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, listing only the appointments the caller may view). Never silently invalidate appointments. Phase 4 extends this to:
-  - staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal (ADR-0012 decision 26);
-  - an explicit override that needs the new `APPOINTMENT_CONFLICT_OVERRIDE` permission (OWNER, MANAGER) plus a reason (decision 25).
+- Interfaces (ports) only for external systems. No interface-per-service, no separate persistence model. One exception: an extension interface in a module's root package that a *dependent* module implements, when an answer is needed synchronously and a direct call would be a cycle (ADR-0001; e.g. `salons.BlockingAppointments`). Inject all implementations; none means "nothing to report".
+- Changes that affect future appointments must go through `salons.AppointmentConflicts.check` (ADR-0012 decisions 21, 25, 26). It returns `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`, listing only the appointments the caller may view, or applies the caller's `conflictOverride` (needs `APPOINTMENT_CONFLICT_OVERRIDE`) and flags them. It covers:
+  - schedule changes that remove time, via `ScheduleConflicts`;
+  - staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal.
+  - Never silently invalidate appointments. New such changes accept `@Valid ConflictOverride conflictOverride` in the body; bodiless ones take `ConflictOverride.Body` as an optional body.
+- Booking (ADR-0013):
+  - Lock order is the idempotency key, then the customer lock (`CustomerLocks`), then the salon row `FOR SHARE`. Never take them in another order.
+  - Bookings and reschedules run through `BookingExecutor` (idempotency, deadlock retries, constraint translation). The exclusion constraints are the final arbiter.
+  - Status changes are `Appointment` methods; every change is recorded with `AppointmentRecorder` (history + event).
 
 ## API conventions
 
@@ -69,7 +75,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Migrations live in `src/main/resources/db/migration/<module>/`. Names use timestamps: `V2026_11_02_1200__description.sql`. **Never edit a merged migration.** Add a new one instead.
 - Every tenant-owned table has a non-null `salon_id`. Same-tenant references use composite foreign keys.
 - Index every foreign key column. Prefer `CHECK`/`UNIQUE`/exclusion constraints over application-only checks.
-- Moments: `Instant` / `timestamptz`. Local schedules: `LocalTime` + branch IANA `time_zone`. Money: `BigDecimal` / `numeric(12,2)` + currency.
+- Moments: `Instant` / `timestamptz`. Local schedules: `LocalTime` + branch IANA `time_zone`. Money: `BigDecimal` / `numeric(12,2)` + currency. Never set `hibernate.jdbc.time_zone`: it shifts `time` values by the JVM offset (ADR-0006).
 - Use `Locale.ROOT` for case normalization (Turkish `İ/ı` problem).
 - `spring.jpa.open-in-view` is false: load what you need inside the transaction.
 
@@ -82,6 +88,8 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `requireInBranch`: branch-specific operational work (appointment books, schedules, clients).
   - `requireForStaffResource`: one staff member's schedule or appointments in a branch (`*_ANY` or own via `*_OWN`).
   - `requireForStaffMember`: one staff member's resource without a branch, e.g. time off (`*_ANY` or own via `*_OWN`; branch-scoped members need a shared branch).
+  - `requireAny`: salon-level work any one of several permissions allows (e.g. creating a walk-in client).
+  - Appointments: reads per `APPOINTMENT_VIEW_ANY` (covered branches) or `_OWN`; not visible means `404 APPOINTMENT_NOT_FOUND`. Changes via `requireForStaffResource(APPOINTMENT_MANAGE_ANY, _OWN)`. Clients need `CLIENT_VIEW`, branch-scoped holders only see clients with appointments in their branches (ADR-0013 decision 36).
   - Filter lists with `SalonMembership.branchRestriction()`.
   - Branch assignments never grant permissions.
 - Load tenant data by `(id, salonId)` (e.g. `findByIdAndSalonId`), never by id alone. Other tenants' resources return 404.
@@ -101,9 +109,11 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 
 - Use PostgreSQL via Testcontainers for anything touching the database. **Never H2.**
 - Integration tests use `@IntegrationTest` (shared context and container, MockMvc, recording email/SMS gateways with `lastCodeSentTo(...)`). Use unique emails and phone numbers per test, since the database is shared.
-- Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `approveSalon` (makes it `ACTIVE`/public), `createService`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `get/post/put/delete/perform`.
-- `TenantIsolationIntegrationTests` resolves `{salon}`, `{branch}`, `{staff}`, `{service}` and `{section}` in paths and bodies. Matrix cases must be idempotent; deletes by id go in `deletesAreLimitedToMembersWithPermission`.
-- `TestBlockingAppointments` (in the shared integration context) stands in for booking: `add(salonId, branchId, staffId, start, blockEnd)`, `clear(salonId)` (call it in `@AfterEach`).
+- Drive the API with the `TestApi` bean: `signUp(name)` / `signUp(name, email)`, `uniqueEmail()`, `makePlatformAdmin`, `createSalon`, `createBranch`, `approveSalon` (makes it `ACTIVE`/public), `createService`, `addMember` (invite + accept), `lastInvitationTokenSentTo`, `signUpCustomer` (verified phone), `verifyPhone`, `uniqueMobile()`, `get/post/put/delete/perform`, `postWithKey`/`performWithKey` (`Idempotency-Key`).
+- Booking tests use the `BookableSalon` fixture (`com.salon`): an approved salon open 09:00–18:00, `service`, `staff`, `member`, `bookingPolicy`, `book`/`booked`, `walkIn`, `bookAtSalon`, `at(day, "10:00")`, `DAY` (three days ahead).
+- `TenantIsolationIntegrationTests` resolves `{salon}`, `{branch}`, `{staff}`, `{service}`, `{section}`, `{offered}` (a service always offered at `{branch}`) and `{unknown}` (an id that exists nowhere) in paths and bodies. Endpoints that need an `Idempotency-Key` set the record's last flag. Matrix cases must be idempotent; deletes by id go in `deletesAreLimitedToMembersWithPermission`.
+- `TestBlockingAppointments` (`com.salon`, in the shared integration context) is a second source of blocking appointments next to booking, for appointments at arbitrary times: `add(salonId, branchId, staffId, [serviceIds,] start, blockEnd)`, `flagReason(id)`, `clear(salonId)` (call it in `@AfterEach`).
+- Booking jobs are disabled in tests (`salon.booking.jobs.enabled=false`); call `BookingJobs` directly. Check events with `@RecordApplicationEvents`.
 - Availability tests: use dates a few days ahead (default policy: 60 minutes notice, 60 days advance). The engine itself is tested without Spring (`AvailabilityEngineTest`, including DST cases with `Europe/Berlin`).
 - Race tests use `Concurrently.run(...)` and assert on the database state afterwards. Simulate email outages with `RecordingEmailGateway.failDeliveryTo(email)` (always restore it in `finally`).
 - Check database constraints by name with direct SQL (see `SalonDatabaseConstraintsIntegrationTests`).

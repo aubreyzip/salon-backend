@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-11-05. Phase 3 is in commit `47e8537` (CI green). The follow-ups since then (see "Work log") are not committed yet.
+Last updated: 2026-11-08. Phase 4 (booking) is implemented and verified locally, but not committed yet (see "Work log"). Phase 5 waits for the go-ahead.
 
 Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisions: `docs/adr/` (index in `docs/adr/README.md`).
 
@@ -11,9 +11,9 @@ Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisi
 | 0. Foundation | Done, except the deferred items below | `3429fc6` |
 | 1. Identity (registration, login, JWT and refresh tokens, email and phone verification, password reset, audit) | Done | `3612321` |
 | 2. Salons and access (salons, branches, staff and roles, invitations, reactivation, review lifecycle, tenant isolation, branch scopes) | Done | `adc074b` |
-| 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine, appointment-conflict boundary) | Done (506 tests, randomized-order runs green), ADR-0012 | `47e8537` + uncommitted follow-ups |
-| **4. Booking** | **Next. Not started** | — |
-| 5. Notifications (outbox, real providers) | Planned | — |
+| 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine, appointment-conflict boundary) | Done (506 tests), ADR-0012 | `47e8537`, `ee1db7c`, `a088dca` |
+| 4. Booking (appointments, idempotency, lifecycle and expiry, salon clients, salon bookings, conflict override, events) | Done (680 tests, randomized-order run green), ADR-0013 | uncommitted |
+| **5. Notifications (outbox, real providers)** | **Next. Not started** | — |
 | 6. Discovery, favorites, reviews, media | Planned | — |
 | 7. Billing (iyzico, e-invoice) | Planned | — |
 | 8. Production hardening | Planned | — |
@@ -21,7 +21,6 @@ Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisi
 Deferred from Phase 0:
 - `.editorconfig`, Spotless and JaCoCo plugins.
 - Structured logging configuration and actuator exposure settings.
-- `btree_gist` extension migration (add with booking, ADR-0005).
 - Mockito agent configuration: Mockito currently self-attaches with a JDK warning.
 
 ## Phase 3 summary (ADR-0012)
@@ -44,24 +43,43 @@ Deferred from Phase 0:
   - There is no implementation until booking, so nothing is blocked yet. Tests use `TestBlockingAppointments`.
   - `ApiException` can carry extra problem members (here `conflictCount` and `appointments`).
 
-## Phase 4 scope (from roadmap and ADRs)
+## Phase 4 summary (ADR-0013, decisions 27–41; ADR-0005, ADR-0009, ADR-0012 decisions 21–26)
 
-- **Appointments:** appointments with items, a `btree_gist` migration and the exclusion constraint (ADR-0005). A Testcontainers migration test must prove that the range expression works.
-- **Booking flow:** `Idempotency-Key`; snapshots of price and duration from `ServiceCatalog.requirements(...)`; availability re-check; `SLOT_UNAVAILABLE` on constraint violation.
-- **Lifecycle:** status transitions and the confirmation mode per branch (ADR-0009); cancellation policies; an expiry job.
-- **Availability:** add blocking appointments to the engine's absences (`AvailabilityService`), and a salon-side availability and booking path (decision #20: every service, no minimum notice).
-- **Clients and views:** `salon_client` (walk-ins and phone bookings), customer and salon appointment views, and the Modulith event registry for `AppointmentBooked`.
-- **Decided for Phase 4 (ADR-0012, decisions 21–26, 2026-11-05):**
-  - **21, schedule changes vs. appointments:**
-    - Implement `scheduling.BlockingAppointments` in booking. With an implementation in place, the existing checks start rejecting conflicting changes with `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`.
-    - Booking takes the salon row lock `FOR SHARE`, so it cannot race a schedule change.
-    - Build the explicit emergency override (reason required, affected appointments flagged for resolution, records kept, visible to authorized staff) and the resolution workflow.
-  - **22, inactive branches:** appointments stay and are not cancelled. Read access follows ADR-0010 unchanged.
-  - **23, customer overlap:** no overlapping active appointments per account-linked customer, platform-wide, buffer excluded. Enforced by an application check plus a second exclusion constraint (ADR-0005).
-  - **24, customer limit:** at most 5 `PENDING`/`CONFIRMED` future appointments per account-linked customer, platform-wide, staff bookings included. Enforced under a per-customer row lock.
-  - **25, override permission:** a new `APPOINTMENT_CONFLICT_OVERRIDE` permission for OWNER and MANAGER, required in addition to the change's own permission. It is added together with the override.
-  - **26, other changes with future appointments:** staff deactivation, branch unassignment, `bookable = false`, skill removal, service archiving and offering removal. They are rejected with the same 409, and the override is allowed. Move the extension point into the `salons` root so `salons` and `catalog` can use it, with service ids added.
-- **Still open:** nothing for Phase 4 so far.
+- **Module:** `booking`, with dependencies `salons ← catalog ← scheduling ← booking`.
+  - Public: `AppointmentEvent` (domain events, ids only).
+  - The extension point `BlockingAppointments` moved to the `salons` root (decision 26). `salons.AppointmentConflicts` holds the shared 409 and override logic.
+  - `scheduling.BookableSlots` checks one exact start. `TenantAccess.requireAny` is new, and `SalonPermission.APPOINTMENT_CONFLICT_OVERRIDE` (OWNER, MANAGER).
+- **Customer** (`/me/appointments`):
+  - book with an `Idempotency-Key`, a staff member or "anyone" (decision 28);
+  - list (`UPCOMING`/`PAST`), read, cancel and reschedule until the branch cutoff.
+  - Requires a public branch and a verified phone (`403 PHONE_NOT_VERIFIED`).
+- **Salon** (`/salons/{id}/appointments`, `/clients`, `/branches/{id}/availability`):
+  - walk-in clients;
+  - salon bookings: any service and minute, 15 minutes in the past to 365 days ahead, inactive branches too;
+  - confirm, reject, cancel (reason required), reschedule, complete, no-show, resolve attention, internal note;
+  - filters `needsAttention` and `awaitingOutcome`; history per appointment.
+- **Rules:**
+  - exclusion constraints for staff (buffer included) and customer (platform-wide, buffer excluded);
+  - at most 5 active appointments per customer, under a per-customer lock;
+  - bookings take the salon row `FOR SHARE`.
+- **Conflicts (decisions 21, 25, 26):** schedule, staff and catalog changes that affect future appointments get `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`. `conflictOverride: {reason}` applies the change and flags the appointments.
+- **Jobs:** pending expiry every minute (`FOR UPDATE SKIP LOCKED`), idempotency cleanup hourly (`BookingScheduler`; disabled in tests with `salon.booking.jobs.enabled=false`).
+- **Availability:** blocking appointments are absences.
+- **Tests (174 new, 680 total):**
+  - customer and salon booking, conflicts and override, jobs and events;
+  - concurrency: the ADR-0005 acceptance test (8 concurrent bookings, one winner), "any staff" spread, customer overlap and limit races, booking vs. time off, idempotent retries;
+  - constraints by name, the time-storage regression, and unit tests (appointment lifecycle, error classification, exact-start check);
+  - tenant isolation matrix 339 cases.
+- **Defects found and fixed:**
+  - Phase 3: local `time` values were stored shifted by the JVM offset (`hibernate.jdbc.time_zone`, ADR-0006). Proven by `LocalTimeStorageIntegrationTests`, then fixed.
+  - Phase 4 (found by the acceptance test): exclusion-constraint deadlocks between concurrent bookings returned 500. They are now retried (ADR-0005).
+
+## Phase 5 scope (from roadmap and ADRs)
+
+- Listeners for `AppointmentEvent` (`@ApplicationModuleListener`, idempotent) through the Modulith publication registry: confirmations, cancellations, reschedules, expiry, needs-attention notices, and reminders (for example to record outcomes, decision 33).
+- The after-commit outbox for email and SMS (ADR-0011): move the existing synchronous identity and invitation messages onto it, then choose real providers (D17).
+- Push notifications and device tokens, and a delivery log.
+- Open before Phase 5: vendor choice (D17), and whether customers are notified of every salon-side change.
 
 ## Work log
 
@@ -70,24 +88,29 @@ Deferred from Phase 0:
 | 2026-11-04 | CI fix: `mvnw` committed without the executable bit (`./mvnw: Permission denied` on the Linux runner) | `a90cce1` |
 | 2026-11-04 | Phase 3 decision register (decisions 1–20) agreed; Phase 3 implemented: `catalog` and `scheduling` modules, availability engine, ADR-0012 | `47e8537` |
 | 2026-11-04 | Catalog error check: the VS Code "non-exposed type" errors are a stale IDE model (`ModularityTests` passes); `DUPLICATE_SERVICE` moved into `CatalogErrors` | `47e8537` |
-| 2026-11-04 | Pre-Phase-4 checks: CI green, `mvnw` line endings and mode, build time (~3 min vs. 20 min limit), first real start of the app (`local` profile, migrations, OpenAPI with all Phase 3 paths), test-log warnings. Adjustments: `INVALID_SERVICES` moved into `SchedulingErrors`; hours kept at a branch a staff member left are now tested and documented | uncommitted |
-| 2026-11-05 | Decisions 21–24 recorded. Decision 21 boundary built: extension point `scheduling.BlockingAppointments`, checks on opening hours, special days, closures, working hours and time off (`409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`); `ApiException` problem properties; time-off creation takes the salon lock; 13 new tests (506 total) | uncommitted |
-| 2026-11-05 | Decisions 25 (override permission) and 26 (staff and catalog changes) recorded; docs reviewed for stale statements | uncommitted |
+| 2026-11-04 | Pre-Phase-4 checks: CI green, `mvnw` line endings and mode, build time (~3 min vs. 20 min limit), first real start of the app (`local` profile, migrations, OpenAPI with all Phase 3 paths), test-log warnings. Adjustments: `INVALID_SERVICES` moved into `SchedulingErrors`; hours kept at a branch a staff member left are now tested and documented | `ee1db7c` |
+| 2026-11-05 | Decisions 21–24 recorded. Decision 21 boundary built: extension point `scheduling.BlockingAppointments`, checks on opening hours, special days, closures, working hours and time off (`409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`); `ApiException` problem properties; time-off creation takes the salon lock; 13 new tests (506 total) | `ee1db7c` |
+| 2026-11-05 | Decisions 25 (override permission) and 26 (staff and catalog changes) recorded; docs reviewed for stale statements | `a088dca` |
+| 2026-11-07 | Phase 4 decision register (27–41) agreed, with adjustments to 28 (exact-start candidates, retry), 33 (no automatic completion) and 37 (staff may book inactive branches, 365 days ahead); ADR-0013 | uncommitted |
+| 2026-11-07 | Phase 4 implemented: `booking` module, extension point moved to `salons`, decision 26 checks and the override, salon availability, jobs, events; 174 new tests (680 total) | uncommitted |
+| 2026-11-07 | Defects fixed: shifted `time` storage from `hibernate.jdbc.time_zone` (Phase 3, ADR-0006); exclusion-constraint deadlocks returned 500 (ADR-0005). `PhoneNumbers` moved to `shared` for walk-in phones | uncommitted |
+| 2026-11-08 | Randomized-order run, docs updated (ADR-0001, 0005, 0006, 0007, 0009, 0010, 0012, 0013, index, report, CLAUDE.md), local app start | uncommitted |
 
 ## Open product decisions
 
 | Topic | Current behavior | Recommendation / when |
 |---|---|---|
-| Client privacy for receptionists and staff | No client records yet | Branch-scoped roles see clients with appointments in their branches (Phase 4, ADR-0010) |
-| Changes that conflict with existing appointments | **Decided (21, 25, 26):** reject with `409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`. OWNER and MANAGER can override with a reason (`APPOINTMENT_CONFLICT_OVERRIDE`). Schedule changes are checked already (inactive until booking implements `BlockingAppointments`). Staff and catalog changes follow in Phase 4 | Phase 4 |
-| Appointments in inactive branches | **Decided (22):** kept, not cancelled; normal read access rules | Phase 4 |
-| Customer limits (D19) | **Decided (23, 24):** no platform-wide overlap (buffer excluded); at most 5 active future appointments | Phase 4 |
+| Editing walk-in client records | Not possible (create, list, read only) | Decide who may edit (recommended: `APPOINTMENT_MANAGE_ANY` + `CLIENT_VIEW`) |
+| Merging duplicate client records (walk-in vs. linked) | Not merged | Later phase (ADR-0013) |
+| Salon cancelling a past, still confirmed appointment | Allowed (decision 29 says "future") | Recommended: allow only before the end; record `NO_SHOW` or `COMPLETED` otherwise |
+| Notifying customers of salon-side changes | Events are published; nothing is sent (decision 39) | Phase 5 |
+| Reminders for unrecorded outcomes (`awaitingOutcome`) | Filter only | Phase 5 notifications |
 | Branch-scoped managers | Managers are salon-wide | Keep, unless explicitly changed (ADR-0010) |
 | Staff self-service profile | Staff cannot edit their own profile | Add a `/me` profile endpoint when clients need it |
 | Editing a salon while `PENDING_REVIEW` | Allowed | Decide before launch (admin may review a moving target) |
 | Auditing failed security attempts (e.g. wrong-account invitation use) | Not audited | Consider in Phase 8 |
 | Category taxonomy changes | Seeded by migration; no admin endpoint | Add admin editing when the list needs to change often |
-| Report decisions D6–D19 (report §13) | D6, D7, D19 accepted in ADR-0012; D11 implemented | Revisit per phase |
+| Report decisions D6–D19 (report §13) | D6, D7, D19 accepted in ADR-0012; D8, D14, D15 in ADR-0013; D11 implemented | Revisit per phase |
 | Hosting region (KVKK), vendors, e-invoice integrator (D16, D17) | Undecided | Before Phase 5 and 7 |
 
 ## Known limitations
@@ -95,16 +118,20 @@ Deferred from Phase 0:
 - **Messaging:** email and SMS are sent synchronously inside transactions, through logging placeholders only. Phase 5 replaces this with an after-commit outbox; until then, no real provider (ADR-0011).
 - **Web refresh cookie:** the web cookie variant of the refresh endpoint is not built; refresh tokens are sent in the body (ADR-0003).
 - **Districts:** stored as free text; only the 81 provinces are reference data.
-- **Concurrency tests:** they use MockMvc in one JVM, not real HTTP. The salon row lock has not been load-tested.
-- **Availability ignores appointments** until Phase 4 adds them as absences. The public endpoint has no rate limit yet (Phase 8).
+- **Concurrency tests:** they use MockMvc in one JVM, not real HTTP. The salon row lock (now also taken `FOR SHARE` by every booking) and the booking path have not been load-tested (Phase 8).
+- **Rate limits:** public availability and booking have no rate limit yet (Phase 8). A customer is limited only by the 5-appointment rule.
 - **Overlapping working hours across branches** are prevented by the application under the salon row lock, not by a database constraint (ADR-0012).
-- **Hours at a branch a staff member left** are kept (unassigning does not delete them; `salons` cannot depend on `scheduling`). They no longer produce availability, but they still count in the cross-branch overlap check, so new hours elsewhere can get `409 WORKING_HOURS_CONFLICT` naming the old branch. Clearing them (`PUT .../branches/{old}/working-hours` with no periods) is always allowed. Phase 4 can clean them up with a `salons` membership event if this proves confusing.
+- **Hours at a branch a staff member left** are kept (unassigning does not delete them; `salons` cannot depend on `scheduling`). They no longer produce availability, but they still count in the cross-branch overlap check, so new hours elsewhere can get `409 WORKING_HOURS_CONFLICT` naming the old branch. Clearing them (`PUT .../branches/{old}/working-hours` with no periods) is always allowed. A cleanup through a `salons` membership event is possible if this proves confusing.
 - **DST fall-back:** a local time that occurs twice is offered only at its earlier instant. Turkey has no DST, so this matters only for future markets.
 - **Time format:** responses carry local times as `"09:00:00"`; requests accept `"09:00"`.
+- **Overrides on bodiless endpoints** (archive, deactivate, delete special day, remove offering) need an optional JSON body; some HTTP clients cannot send a body with `DELETE` (ADR-0013).
+- **Expiry precision:** the job runs every minute, so a pending appointment can stay `PENDING` up to a minute after its deadline. Confirming it then fails (`409`), and it still blocks the slot until the job runs.
+- **Unmarked past appointments** stay `CONFIRMED` until staff record the outcome (decision 33).
 
 ## Environment notes (this machine)
 
 - JDK 25 is installed at user level, and `JAVA_HOME` points to it. Restart VS Code and terminals if `java -version` still shows 21.
 - Docker Desktop must be running for tests (Testcontainers) and `spring-boot:run` (Compose). It is installed per user (`%LOCALAPPDATA%\Programs\DockerDesktop`).
+- The JVM default zone here is Europe/Istanbul (+03:00), unlike CI (UTC). Time-zone bugs can show only locally (see ADR-0006).
 - The GitHub CLI is not logged in, so CI results must be checked on GitHub (`aubreyzip/salon-backend`, Actions tab).
 - CI: `mvnw` must stay executable in git (mode `100755`, fixed in `a90cce1`). Files created on Windows lose the bit: use `git update-index --chmod=+x <file>`.

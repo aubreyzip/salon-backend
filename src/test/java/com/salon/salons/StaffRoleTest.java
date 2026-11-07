@@ -13,13 +13,14 @@ class StaffRoleTest {
 	}
 
 	@Test
-	void managersHaveEverythingExceptBillingManagement() {
+	void managersHaveEverythingExceptBillingManagementIncludingTheConflictOverride() {
 		assertThat(StaffRole.MANAGER.permissions()).containsExactlyInAnyOrder(SalonPermission.SALON_MANAGE,
 				SalonPermission.BRANCH_MANAGE, SalonPermission.STAFF_MANAGE, SalonPermission.CATALOG_MANAGE,
 				SalonPermission.SCHEDULE_MANAGE_ANY, SalonPermission.SCHEDULE_MANAGE_OWN,
 				SalonPermission.APPOINTMENT_VIEW_ANY, SalonPermission.APPOINTMENT_VIEW_OWN,
 				SalonPermission.APPOINTMENT_MANAGE_ANY, SalonPermission.APPOINTMENT_MANAGE_OWN,
-				SalonPermission.CLIENT_VIEW, SalonPermission.BILLING_VIEW);
+				SalonPermission.CLIENT_VIEW, SalonPermission.BILLING_VIEW,
+				SalonPermission.APPOINTMENT_CONFLICT_OVERRIDE);
 	}
 
 	@Test

@@ -178,6 +178,22 @@ public final class AvailabilityEngine {
 		return slots;
 	}
 
+	/**
+	 * Whether the staff member is free for {@code [start, start + duration + buffer)} at the branch:
+	 * the whole range lies inside one free range (opening hours ∩ working hours on the start's local
+	 * date, minus absences). Booking checks the exact start with this (ADR-0013); policy rules (grid,
+	 * notice, advance) are checked separately.
+	 */
+	public static boolean isFree(BranchCalendar branch, StaffCalendar staff, ZoneId zone, Instant start,
+			int bufferMinutes) {
+		LocalDate date = LocalDate.ofInstant(start, zone);
+		List<InstantRange> free = InstantRange.subtract(
+				toInstants(TimeInterval.intersect(branch.openOn(date), staff.workingOn(date)), date, zone),
+				staff.absences());
+		Instant end = start.plus(Duration.ofMinutes(staff.durationMinutes() + bufferMinutes));
+		return free.stream().anyMatch(range -> range.contains(start, end));
+	}
+
 	static List<InstantRange> toInstants(List<TimeInterval> intervals, LocalDate date, ZoneId zone) {
 		List<InstantRange> ranges = new ArrayList<>();
 		for (TimeInterval interval : intervals) {

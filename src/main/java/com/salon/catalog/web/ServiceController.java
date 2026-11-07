@@ -8,6 +8,7 @@ import com.salon.catalog.application.CatalogService;
 import com.salon.catalog.application.CatalogViews.ServiceView;
 import com.salon.catalog.domain.ServiceDetails;
 import com.salon.catalog.domain.ServiceOffering;
+import com.salon.salons.ConflictOverride;
 import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -65,8 +66,9 @@ class ServiceController {
 	}
 
 	@PostMapping("/{serviceId}/archive")
-	ServiceView archive(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID serviceId) {
-		return catalog.archiveService(salonId, serviceId, userId);
+	ServiceView archive(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID serviceId,
+			@Valid @RequestBody(required = false) ConflictOverride.Body body) {
+		return catalog.archiveService(salonId, serviceId, userId, ConflictOverride.Body.of(body));
 	}
 
 	@PostMapping("/{serviceId}/restore")
@@ -83,8 +85,8 @@ class ServiceController {
 
 	@DeleteMapping("/{serviceId}/branches/{branchId}")
 	ServiceView removeOffering(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID serviceId,
-			@PathVariable UUID branchId) {
-		return catalog.removeFromBranch(salonId, serviceId, branchId, userId);
+			@PathVariable UUID branchId, @Valid @RequestBody(required = false) ConflictOverride.Body body) {
+		return catalog.removeFromBranch(salonId, serviceId, branchId, userId, ConflictOverride.Body.of(body));
 	}
 
 	record ServiceRequest(@NotNull Integer categoryId, UUID sectionId, @NotBlank @Size(max = 100) String name,

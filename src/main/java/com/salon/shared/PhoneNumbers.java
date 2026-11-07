@@ -1,4 +1,4 @@
-package com.salon.identity.domain;
+package com.salon.shared;
 
 import java.util.Optional;
 import java.util.regex.Pattern;

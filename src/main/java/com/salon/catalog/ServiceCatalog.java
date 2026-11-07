@@ -73,24 +73,23 @@ public class ServiceCatalog {
 					service.isPriceFrom()));
 			buffer = Math.max(buffer, offering.effectiveBufferMinutes(service));
 		}
-		return new BookingRequirements(required, buffer, durationsByStaff(salonId, required));
+		return new BookingRequirements(required, buffer, serviceDurationsByStaff(salonId, required));
 	}
 
-	/** Staff with a skill for every service, and their total duration. */
-	private Map<UUID, Integer> durationsByStaff(UUID salonId, List<RequiredService> required) {
+	/** Staff with a skill for every service, and their duration per service. */
+	private Map<UUID, Map<UUID, Integer>> serviceDurationsByStaff(UUID salonId, List<RequiredService> required) {
 		Map<UUID, Integer> branchDuration = required.stream()
 			.collect(Collectors.toMap(RequiredService::serviceId, RequiredService::durationMinutes));
 		Map<UUID, List<StaffSkill>> skillsByStaff = skills.findBySalonIdAndServiceIdIn(salonId, branchDuration.keySet())
 			.stream()
 			.collect(Collectors.groupingBy(StaffSkill::getStaffId));
-		Map<UUID, Integer> result = new HashMap<>();
+		Map<UUID, Map<UUID, Integer>> result = new HashMap<>();
 		skillsByStaff.forEach((staffId, staffSkills) -> {
 			if (staffSkills.size() == branchDuration.size()) {
-				int total = staffSkills.stream()
-					.mapToInt(skill -> skill.getDurationOverrideMinutes() != null ? skill.getDurationOverrideMinutes()
-							: branchDuration.get(skill.getServiceId()))
-					.sum();
-				result.put(staffId, total);
+				result.put(staffId, staffSkills.stream()
+					.collect(Collectors.toMap(StaffSkill::getServiceId,
+							skill -> skill.getDurationOverrideMinutes() != null ? skill.getDurationOverrideMinutes()
+									: branchDuration.get(skill.getServiceId()))));
 			}
 		});
 		return result;

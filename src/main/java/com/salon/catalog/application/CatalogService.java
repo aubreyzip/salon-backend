@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import com.salon.audit.AuditLog;
@@ -23,7 +22,10 @@ import com.salon.catalog.domain.ServiceOfferingRepository;
 import com.salon.catalog.domain.ServiceSection;
 import com.salon.catalog.domain.ServiceSectionRepository;
 import com.salon.catalog.domain.ServiceStatus;
+import com.salon.salons.AppointmentConflicts;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonDirectory;
+import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
 import com.salon.salons.TenantAccess;
 import org.springframework.stereotype.Service;
@@ -53,19 +55,22 @@ public class CatalogService {
 
 	private final SalonDirectory directory;
 
+	private final AppointmentConflicts conflicts;
+
 	private final AuditLog auditLog;
 
 	private final Clock clock;
 
 	CatalogService(ServiceCategoryRepository categories, ServiceSectionRepository sections,
 			ServiceItemRepository services, ServiceOfferingRepository offerings, TenantAccess access,
-			SalonDirectory directory, AuditLog auditLog, Clock clock) {
+			SalonDirectory directory, AppointmentConflicts conflicts, AuditLog auditLog, Clock clock) {
 		this.categories = categories;
 		this.sections = sections;
 		this.services = services;
 		this.offerings = offerings;
 		this.access = access;
 		this.directory = directory;
+		this.conflicts = conflicts;
 		this.auditLog = auditLog;
 		this.clock = clock;
 	}
@@ -135,25 +140,36 @@ public class CatalogService {
 	}
 
 	public ServiceView updateService(UUID salonId, UUID serviceId, UUID userId, ServiceDetails details) {
-		return changeService(salonId, serviceId, userId, "catalog.service.updated", (service, now) -> {
+		return changeService(salonId, serviceId, userId, "catalog.service.updated", (caller, service, now) -> {
 			checkReferences(salonId, details);
 			service.update(details, now);
 		});
 	}
 
-	/** Archived services are no longer bookable; offerings and skills are kept for a restore. */
-	public ServiceView archiveService(UUID salonId, UUID serviceId, UUID userId) {
-		return changeService(salonId, serviceId, userId, "catalog.service.archived", ServiceItem::archive);
+	/**
+	 * Archived services are no longer bookable; offerings and skills are kept for a restore. Future
+	 * appointments with the service conflict (ADR-0012 decision 26).
+	 */
+	public ServiceView archiveService(UUID salonId, UUID serviceId, UUID userId, ConflictOverride override) {
+		return changeService(salonId, serviceId, userId, "catalog.service.archived", (caller, service, now) -> {
+			if (service.isActive()) {
+				conflicts.check(caller, conflicts.withService(salonId, serviceId), appointment -> true, override,
+						"service archiving");
+			}
+			service.archive(now);
+		});
 	}
 
 	public ServiceView restoreService(UUID salonId, UUID serviceId, UUID userId) {
-		return changeService(salonId, serviceId, userId, "catalog.service.restored", ServiceItem::restore);
+		return changeService(salonId, serviceId, userId, "catalog.service.restored",
+				(caller, service, now) -> service.restore(now));
 	}
 
 	/** Offers the service at the branch, or changes the overrides of an existing offering. */
 	public ServiceView offerAtBranch(UUID salonId, UUID serviceId, UUID branchId, UUID userId,
 			ServiceOffering.Overrides overrides) {
-		return changeService(salonId, serviceId, userId, "catalog.service.offering_changed", (service, now) -> {
+		return changeService(salonId, serviceId, userId, "catalog.service.offering_changed",
+				(caller, service, now) -> {
 			if (!service.isActive()) {
 				throw CatalogErrors.serviceArchived();
 			}
@@ -164,27 +180,46 @@ public class CatalogService {
 		});
 	}
 
-	/** Stops offering the service at the branch. Does nothing if it is not offered there. */
-	public ServiceView removeFromBranch(UUID salonId, UUID serviceId, UUID branchId, UUID userId) {
-		return changeService(salonId, serviceId, userId, "catalog.service.offering_removed", (service, now) -> {
+	/**
+	 * Stops offering the service at the branch. Does nothing if it is not offered there. Future
+	 * appointments with the service at the branch conflict (ADR-0012 decision 26).
+	 */
+	public ServiceView removeFromBranch(UUID salonId, UUID serviceId, UUID branchId, UUID userId,
+			ConflictOverride override) {
+		return changeService(salonId, serviceId, userId, "catalog.service.offering_removed",
+				(caller, service, now) -> {
 			checkBranch(salonId, branchId);
-			offerings.findBySalonIdAndServiceIdAndBranchId(salonId, serviceId, branchId).ifPresent(offerings::delete);
+			offerings.findBySalonIdAndServiceIdAndBranchId(salonId, serviceId, branchId).ifPresent(offering -> {
+				conflicts.check(caller, conflicts.withService(salonId, serviceId),
+						appointment -> appointment.branchId().equals(branchId), override, "offering removal");
+				offerings.delete(offering);
+			});
 		});
 	}
 
 	private ServiceView changeService(UUID salonId, UUID serviceId, UUID userId, String action,
-			BiConsumer<ServiceItem, Instant> change) {
-		checkManage(salonId, userId);
+			ServiceChange change) {
+		// Salon lock first: archiving and offering removal check appointments (decision 26).
+		directory.lockSalon(salonId);
+		SalonMembership caller = checkManage(salonId, userId);
 		ServiceItem service = loadService(salonId, serviceId);
-		change.accept(service, clock.instant());
+		change.apply(caller, service, clock.instant());
 		offerings.flush();
 		audit(userId, salonId, action, ENTITY_SERVICE, serviceId);
 		return view(service);
 	}
 
-	private void checkManage(UUID salonId, UUID userId) {
-		access.require(salonId, userId, SalonPermission.CATALOG_MANAGE);
+	@FunctionalInterface
+	private interface ServiceChange {
+
+		void apply(SalonMembership caller, ServiceItem service, Instant now);
+
+	}
+
+	private SalonMembership checkManage(UUID salonId, UUID userId) {
+		SalonMembership caller = access.require(salonId, userId, SalonPermission.CATALOG_MANAGE);
 		directory.ensureModifiable(salonId);
+		return caller;
 	}
 
 	private void checkReferences(UUID salonId, ServiceDetails details) {

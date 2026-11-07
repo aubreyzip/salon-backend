@@ -12,6 +12,8 @@ import java.util.UUID;
 import com.salon.IntegrationTest;
 import com.salon.TestApi;
 import com.salon.TestApi.TestUser;
+import com.salon.TestBlockingAppointments;
+import com.salon.salons.BlockingAppointment;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

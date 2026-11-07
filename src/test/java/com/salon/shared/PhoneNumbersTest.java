@@ -1,4 +1,4 @@
-package com.salon.identity.domain;
+package com.salon.shared;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

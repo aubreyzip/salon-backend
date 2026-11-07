@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.StaffRole;
 import com.salon.salons.application.StaffService;
 import com.salon.salons.application.StaffView;
@@ -51,12 +52,14 @@ class StaffController {
 	@PutMapping("/{staffId}")
 	StaffView update(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId,
 			@Valid @RequestBody StaffRequest request) {
-		return staff.update(salonId, staffId, userId, request.profile(), request.role(), request.branches());
+		return staff.update(salonId, staffId, userId, request.profile(), request.role(), request.branches(),
+				request.conflictOverride());
 	}
 
 	@PostMapping("/{staffId}/deactivate")
-	StaffView deactivate(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId) {
-		return staff.deactivate(salonId, staffId, userId);
+	StaffView deactivate(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId,
+			@Valid @RequestBody(required = false) ConflictOverride.Body body) {
+		return staff.deactivate(salonId, staffId, userId, ConflictOverride.Body.of(body));
 	}
 
 	@PostMapping("/{staffId}/reactivate")
@@ -94,7 +97,8 @@ class StaffController {
 	}
 
 	record StaffRequest(@NotBlank @Size(max = 100) String displayName, @Size(max = 100) String title,
-			@Size(max = 1000) String bio, @NotNull StaffRole role, @NotNull Boolean bookable, Set<UUID> branchIds) {
+			@Size(max = 1000) String bio, @NotNull StaffRole role, @NotNull Boolean bookable, Set<UUID> branchIds,
+			@Valid ConflictOverride conflictOverride) {
 
 		StaffProfile profile() {
 			return new StaffProfile(displayName.strip(), blankToNull(title), blankToNull(bio), bookable);

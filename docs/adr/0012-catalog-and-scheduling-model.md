@@ -1,6 +1,6 @@
 # ADR-0012: Catalog and scheduling model
 
-- Status: Accepted (Phase 3 decision register, confirmed 2026-11-04; decisions 21–26 added 2026-11-05), implemented (Phase 3: decisions 1–20 and the validation boundary of 21; Phase 4: the override of 21 and decisions 22–26)
+- Status: Accepted (Phase 3 decision register, confirmed 2026-11-04; decisions 21–26 added 2026-11-05), implemented (Phase 3: decisions 1–20 and the validation boundary of 21; Phase 4, 2026-11-07: the override of 21 and decisions 22–26, see ADR-0013)
 - Date: 2026-11-04
 
 ## Context
@@ -11,7 +11,8 @@ Phase 3 adds what a salon sells (catalog) and when its staff can work (schedulin
 
 Two new modules, with dependencies `salons ← catalog ← scheduling`:
 - `catalog`: public API `ServiceCatalog` and `BookingRequirements`.
-- `scheduling`: public extension point `BlockingAppointments` and `BlockingAppointment` (decision 21), which booking implements in Phase 4. This is an interface for another module to implement, an exception to "interfaces only for external systems": booking depends on scheduling, so scheduling cannot call booking directly without a module cycle.
+- `scheduling`: public API `BookableSlots` (Phase 4: checks one exact start for booking).
+- Extension point `BlockingAppointments` and `BlockingAppointment` (decisions 21 and 26), implemented by booking. It was in the `scheduling` root in Phase 3 and moved to the `salons` root in Phase 4 (decision 26). This is an interface for another module to implement, an exception to "interfaces only for external systems": booking depends on these modules, so they cannot call booking directly without a module cycle.
 - Both read salon, branch and staff facts through the new `salons` root types `SalonDirectory`, `BranchInfo` and `StaffInfo`.
 
 ### Catalog
@@ -85,8 +86,8 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
 - **No silent invalidation:** existing appointments are never invalidated without someone deciding it.
 - **Emergency override:** a separate, explicit path for authorized managers (permission: decision 25), with a required reason. It identifies the affected appointments, flags them for resolution, keeps their records, and makes them visible to authorized salon staff. The resolution workflow belongs to Phase 4.
 - *Implemented in Phase 3* (the validation boundary):
-  - The `scheduling` root package defines the extension point `BlockingAppointments`, returning `BlockingAppointment` records. Booking implements it in Phase 4. With no implementation (Phase 3), no change is blocked.
-  - The check runs in `ScheduleConflicts` (application) and `ScheduleCoverage` (domain, pure).
+  - The `scheduling` root package defines the extension point `BlockingAppointments`, returning `BlockingAppointment` records. Booking implements it in Phase 4. With no implementation (Phase 3), no change is blocked. (Phase 4: moved to the `salons` root.)
+  - The check runs in `ScheduleConflicts` (application) and `ScheduleCoverage` (domain, pure). Phase 4: rejection and override are shared with staff and catalog changes in `salons.AppointmentConflicts`.
   - **What counts as a conflict:** the change removes time the appointment needs. The appointment's `[start, blockEnd)`, buffer included, fits the hours before the change and not after. For time off, the new time off overlaps it. Appointments that did not fit before (e.g. booked with an override) are not blamed on an unrelated change. Closing exactly when the buffer ends is not a conflict.
   - **What the 409 contains:** `conflictCount` (all conflicts) and `appointments` (`id`, `branchId`, `staffId`, `start`, `end`). The list holds only the appointments the caller may view, under appointment-read rules: `APPOINTMENT_VIEW_ANY` in a covered branch, or `APPOINTMENT_VIEW_OWN` for their own.
   - **Not checked:** changes that only add time (deleting a closure or time off).
@@ -96,11 +97,18 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
   - **No race with schedule changes:** booking must not commit an appointment while a conflicting schedule change is in flight. Recommended: booking takes the salon row lock `FOR SHARE`; schedule changes already take it `FOR UPDATE`, so bookings don't block each other but wait for schedule changes.
   - **Override shape:** an optional request member (e.g. `conflictOverride: {reason}`), an additive v1 change. Flagging uses an additional extension method or event, audited.
 
+- *Implemented in Phase 4 (ADR-0013):*
+  - booking implements the extension point (`BookingBlockingAppointments`);
+  - bookings take the salon row `FOR SHARE` (`SalonDirectory.lockSalonShared`);
+  - the override is `conflictOverride: {reason}` with `APPOINTMENT_CONFLICT_OVERRIDE`. Affected appointments get the "needs attention" flag, an `ATTENTION_FLAGGED` history entry and an `AppointmentEvent.NeedsAttention`; the override is audited (`appointments.conflict_overridden`). Resolution: reschedule, cancel or `resolve-attention` (decision 38).
+
 **22. Appointments in inactive branches.**
 - Appointments stay associated with a branch after it is deactivated.
 - Deactivation stops new **public** bookings (already true: inactive branches are not public). It does not delete, cancel or hide existing appointments.
 - Read access follows ADR-0010 unchanged. Branch-scoped members keep read access to a branch's appointment history while their membership is active, their assignment to that branch exists, and they hold the read permission. Removing the assignment or deactivating the membership removes that access.
 - A branch closing for good with future appointments goes through the conflict-resolution process of decision 21.
+
+- *Implemented in Phase 4:* no special code. Bookings in inactive branches are possible only from the salon (ADR-0013 decision 37).
 
 **23. No overlapping appointments for one customer, platform-wide.**
 - A customer's active (blocking) appointments must not overlap, across all salons and branches.
@@ -108,11 +116,15 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
 - Identity is the global customer account (`user_account` id), not `salon_client`. Unlinked walk-in records have no global identity and are not checked.
 - *Phase 4 design constraints:* an application check (friendly error) plus a PostgreSQL exclusion constraint for concurrent requests: `EXCLUDE USING gist (customer_user_id WITH =, tstzrange(start_at, end_at, '[)') WITH &&) WHERE (status IN ('PENDING','CONFIRMED') AND customer_user_id IS NOT NULL)`. It sits next to the staff constraint of ADR-0005, which uses `block_end_at`.
 
+- *Implemented in Phase 4:* `BookingRules.checkCustomer` plus `appointment_no_customer_overlap`; `409 CUSTOMER_OVERLAP`.
+
 **24. At most five active future appointments per customer, platform-wide.**
 - Counted: `PENDING`, `CONFIRMED`. Not counted: `COMPLETED`, `CANCELLED`, `REJECTED`, `NO_SHOW`, `EXPIRED`.
 - Applies across all salons and branches.
 - Staff bookings for an account-linked customer count. Unlinked walk-in records do not.
 - *Phase 4 design constraints:* enforce it transactionally. A count alone races, so concurrent bookings by one customer must serialize. Recommended: a booking-owned per-customer row locked `FOR UPDATE` before counting, the same pattern as the salon row lock (ADR-0002). Advisory locks are the fallback.
+
+- *Implemented in Phase 4:* row `booking_customer_lock`, locked before the count; `409 CUSTOMER_APPOINTMENT_LIMIT` (with `limit`). "Future" means `end_at` after now.
 
 **25. Permission for the emergency override.** (decided 2026-11-05)
 - A new permission `APPOINTMENT_CONFLICT_OVERRIDE`, granted to OWNER and MANAGER only. Receptionists and staff don't get it.
@@ -135,6 +147,7 @@ These decisions mainly govern booking (Phase 4). Phase 3 implements only the val
 - *Phase 4 design constraints:*
   - **Move the extension point down.** These checks live in `salons` and `catalog`, below `scheduling`, so they can't use `scheduling.BlockingAppointments`. Recommended: move the extension point into the `salons` root package, the lowest module that needs it, so booking implements a single interface. Add each appointment's service ids and queries by service.
   - **Same order of steps.** The checks run after the existing access checks and under the salon row lock. Membership changes already take it (ADR-0002). Catalog changes that run these checks must take it too.
+- *Implemented in Phase 4:* `StaffService` (deactivate, update), `CatalogService` (archive, remove offering; every service change now locks the salon), `StaffSkillService` (replace; locks the salon). `BlockingAppointment` carries the service ids. Bodiless endpoints take `{"conflictOverride": {...}}` as an optional body.
 
 ## Consequences
 

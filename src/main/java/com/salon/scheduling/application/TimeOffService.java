@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.salon.audit.AuditLog;
 import com.salon.audit.AuditRecord;
+import com.salon.salons.ConflictOverride;
 import com.salon.salons.SalonDirectory;
 import com.salon.salons.SalonMembership;
 import com.salon.salons.SalonPermission;
@@ -75,13 +76,14 @@ public class TimeOffService {
 	 * Takes the salon row lock, so the appointment check (decision 21) cannot race a booking.
 	 */
 	public TimeOffView create(UUID salonId, UUID staffId, UUID userId, Instant startAt, Instant endAt,
-			String reason) {
+			String reason, ConflictOverride override) {
 		directory.lockSalon(salonId);
 		SalonMembership caller = checkAccess(salonId, staffId, userId);
 		directory.ensureModifiable(salonId);
 		TimeOff timeOff = new TimeOff(salonId, staffId, startAt, endAt, reason, userId, clock.instant());
-		conflicts.reject(caller, conflicts.ofStaff(salonId, staffId, null),
-				appointment -> timeOff.range().overlaps(new InstantRange(appointment.start(), appointment.blockEnd())));
+		conflicts.check(caller, conflicts.ofStaff(salonId, staffId, null),
+				appointment -> timeOff.range().overlaps(new InstantRange(appointment.start(), appointment.blockEnd())),
+				override, "time off");
 		timeOffs.save(timeOff);
 		audit(userId, salonId, "scheduling.time_off.created", timeOff);
 		return TimeOffView.of(timeOff);

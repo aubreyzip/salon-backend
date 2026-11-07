@@ -1,6 +1,6 @@
 # ADR-0005: Double booking is prevented by a PostgreSQL exclusion constraint
 
-- Status: Accepted (implementation in the booking phase)
+- Status: Accepted, implemented (Phase 4, 2026-11-07)
 - Date: 2026-11-02
 
 ## Context
@@ -23,3 +23,10 @@ Two customers (or a customer and a receptionist) can try to book the same employ
 - Half-open ranges allow back-to-back appointments.
 - The managed PostgreSQL provider must support `btree_gist`.
 - A migration test must confirm the constraint expression is accepted (it must be immutable). If not, fall back to a stored `tstzrange` column maintained by the application.
+
+## Implementation (Phase 4)
+
+- Migration `booking/V2026_11_07_1000__create_booking.sql`: `btree_gist`, `appointment_no_staff_overlap` and `appointment_no_customer_overlap`. The `tstzrange(...)` expressions are accepted (no fallback column needed). `BookingDatabaseConstraintsIntegrationTests` checks both by name.
+- Acceptance test: `BookingConcurrencyIntegrationTests.concurrentBookingsOfOneSlotHaveExactlyOneWinner`. Eight concurrent attempts give one `201` and seven `409 SLOT_UNAVAILABLE`.
+- **Deadlocks:** PostgreSQL can deadlock concurrent inserts that conflict on an exclusion constraint. Each transaction inserted its row and waits for the other (`40P01`, "while checking exclusion constraint"). PostgreSQL aborts one. The booking retries such an attempt (up to 3 times); the retry then sees the winner and returns `409 SLOT_UNAVAILABLE`. Found by the acceptance test, which first returned 500 for the losers.
+- Idempotency is per user (`idempotency_record`, ADR-0013 decision 41). The key row is inserted first, so concurrent retries with one key create one appointment.

@@ -6,6 +6,7 @@ import java.util.UUID;
 import com.salon.catalog.application.CatalogViews.SkillView;
 import com.salon.catalog.application.StaffSkillService;
 import com.salon.catalog.application.StaffSkillService.SkillAssignment;
+import com.salon.salons.ConflictOverride;
 import com.salon.shared.CurrentUserId;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -43,10 +44,11 @@ class StaffSkillController {
 	List<SkillView> replace(@CurrentUserId UUID userId, @PathVariable UUID salonId, @PathVariable UUID staffId,
 			@Valid @RequestBody SkillsRequest request) {
 		return skills.replace(salonId, staffId, userId,
-				request.skills().stream().map(SkillRequest::assignment).toList());
+				request.skills().stream().map(SkillRequest::assignment).toList(), request.conflictOverride());
 	}
 
-	record SkillsRequest(@NotNull @Size(max = 200) List<@NotNull @Valid SkillRequest> skills) {
+	record SkillsRequest(@NotNull @Size(max = 200) List<@NotNull @Valid SkillRequest> skills,
+			@Valid ConflictOverride conflictOverride) {
 	}
 
 	record SkillRequest(@NotNull UUID serviceId, @Min(5) @Max(720) Integer durationOverrideMinutes) {
