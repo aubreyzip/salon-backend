@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-11-08. Phase 4 (booking) is implemented and verified locally, but not committed yet (see "Work log"). Phase 5 waits for the go-ahead.
+Last updated: 2026-11-08. Phases 0–4 are done and committed; Phase 4 is `b187eee`, and CI is green on it. Phase 5 waits for the go-ahead.
 
 Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisions: `docs/adr/` (index in `docs/adr/README.md`).
 
@@ -12,7 +12,7 @@ Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisi
 | 1. Identity (registration, login, JWT and refresh tokens, email and phone verification, password reset, audit) | Done | `3612321` |
 | 2. Salons and access (salons, branches, staff and roles, invitations, reactivation, review lifecycle, tenant isolation, branch scopes) | Done | `adc074b` |
 | 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine, appointment-conflict boundary) | Done (506 tests), ADR-0012 | `47e8537`, `ee1db7c`, `a088dca` |
-| 4. Booking (appointments, idempotency, lifecycle and expiry, salon clients, salon bookings, conflict override, events) | Done (680 tests, randomized-order run green), ADR-0013 | uncommitted |
+| 4. Booking (appointments, idempotency, lifecycle and expiry, salon clients, salon bookings, conflict override, events) | Done (680 tests, randomized-order run green), ADR-0013 | `b187eee` |
 | **5. Notifications (outbox, real providers)** | **Next. Not started** | — |
 | 6. Discovery, favorites, reviews, media | Planned | — |
 | 7. Billing (iyzico, e-invoice) | Planned | — |
@@ -91,10 +91,10 @@ Deferred from Phase 0:
 | 2026-11-04 | Pre-Phase-4 checks: CI green, `mvnw` line endings and mode, build time (~3 min vs. 20 min limit), first real start of the app (`local` profile, migrations, OpenAPI with all Phase 3 paths), test-log warnings. Adjustments: `INVALID_SERVICES` moved into `SchedulingErrors`; hours kept at a branch a staff member left are now tested and documented | `ee1db7c` |
 | 2026-11-05 | Decisions 21–24 recorded. Decision 21 boundary built: extension point `scheduling.BlockingAppointments`, checks on opening hours, special days, closures, working hours and time off (`409 SCHEDULE_CONFLICTS_WITH_APPOINTMENTS`); `ApiException` problem properties; time-off creation takes the salon lock; 13 new tests (506 total) | `ee1db7c` |
 | 2026-11-05 | Decisions 25 (override permission) and 26 (staff and catalog changes) recorded; docs reviewed for stale statements | `a088dca` |
-| 2026-11-07 | Phase 4 decision register (27–41) agreed, with adjustments to 28 (exact-start candidates, retry), 33 (no automatic completion) and 37 (staff may book inactive branches, 365 days ahead); ADR-0013 | uncommitted |
-| 2026-11-07 | Phase 4 implemented: `booking` module, extension point moved to `salons`, decision 26 checks and the override, salon availability, jobs, events; 174 new tests (680 total) | uncommitted |
-| 2026-11-07 | Defects fixed: shifted `time` storage from `hibernate.jdbc.time_zone` (Phase 3, ADR-0006); exclusion-constraint deadlocks returned 500 (ADR-0005). `PhoneNumbers` moved to `shared` for walk-in phones | uncommitted |
-| 2026-11-08 | Randomized-order run, docs updated (ADR-0001, 0005, 0006, 0007, 0009, 0010, 0012, 0013, index, report, CLAUDE.md), local app start | uncommitted |
+| 2026-11-07 | Phase 4 decision register (27–41) agreed, with adjustments to 28 (exact-start candidates, retry), 33 (no automatic completion) and 37 (staff may book inactive branches, 365 days ahead); ADR-0013 | `b187eee` |
+| 2026-11-07 | Phase 4 implemented: `booking` module, extension point moved to `salons`, decision 26 checks and the override, salon availability, jobs, events; 174 new tests (680 total) | `b187eee` |
+| 2026-11-07 | Defects fixed: shifted `time` storage from `hibernate.jdbc.time_zone` (Phase 3, ADR-0006); exclusion-constraint deadlocks returned 500 (ADR-0005). `PhoneNumbers` moved to `shared` for walk-in phones | `b187eee` |
+| 2026-11-08 | Randomized-order run, docs updated (ADR-0001, 0005, 0006, 0007, 0009, 0010, 0012, 0013, index, report, CLAUDE.md), local app start | `b187eee` |
 
 ## Open product decisions
 
@@ -133,5 +133,5 @@ Deferred from Phase 0:
 - JDK 25 is installed at user level, and `JAVA_HOME` points to it. Restart VS Code and terminals if `java -version` still shows 21.
 - Docker Desktop must be running for tests (Testcontainers) and `spring-boot:run` (Compose). It is installed per user (`%LOCALAPPDATA%\Programs\DockerDesktop`).
 - The JVM default zone here is Europe/Istanbul (+03:00), unlike CI (UTC). Time-zone bugs can show only locally (see ADR-0006).
-- The GitHub CLI is not logged in, so CI results must be checked on GitHub (`aubreyzip/salon-backend`, Actions tab).
+- The GitHub CLI is logged in: check CI with `gh run list` (repository `aubreyzip/salon-backend`). Since Phase 4 the CI build takes about 6.5 minutes (job limit 20 minutes).
 - CI: `mvnw` must stay executable in git (mode `100755`, fixed in `a90cce1`). Files created on Windows lose the bit: use `git update-index --chmod=+x <file>`.
