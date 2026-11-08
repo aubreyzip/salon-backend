@@ -64,7 +64,8 @@ Principle from the review: an appointment is a commitment between a customer and
 - Bookings in an inactive branch are visible only to the salon until the branch is activated.
 - A `DELETE` or bodiless `POST` with an optional JSON body is unusual; clients that cannot send it can't override those four changes. Revisit if a client needs a query parameter instead.
 - Duplicate walk-in records and account-linked records are not merged yet.
-- Walk-in client records cannot be edited yet (no product decision on who may edit). Only creating, listing and reading exist.
-- The salon may cancel a past, still `CONFIRMED` appointment (e.g. to correct its records). Recording `NO_SHOW` or `COMPLETED` is the intended path.
+- Walk-in client records cannot be edited yet. Only creating, listing and reading exist. ADR-0014 decision 54 (proposed) adds `CLIENT_MANAGE`.
+- The salon may cancel a past, still `CONFIRMED` appointment, which deviates from decision 29 ("future"). ADR-0014 decision 55 (proposed) restricts it to before the start; afterwards staff record `NO_SHOW` or `COMPLETED`.
+- Events carry ids only. ADR-0014 decision 56 (proposed) adds the history entry id, so notifications describe the state at the time of the change.
 - Moving an appointment to another branch is not supported. Cancel and book again.
 - While building this, a Phase 3 defect was found and fixed: `time` values were shifted by the JVM's offset (ADR-0006).

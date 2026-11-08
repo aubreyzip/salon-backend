@@ -15,5 +15,6 @@
 | [0011](0011-transactional-messaging.md) | Messages delivered after commit through a transactional outbox | Accepted, implement in Phase 5 |
 | [0012](0012-catalog-and-scheduling-model.md) | Catalog, working hours, branch calendars and the availability engine; appointment rules for schedule changes, inactive branches and customer limits (decisions 21–26) | Accepted, implemented (Phase 3 and 4) |
 | [0013](0013-booking-model.md) | Booking: endpoints, staff choice, cancellation and rescheduling, expiry, outcomes, clients and privacy, salon bookings, override, events, idempotency (decisions 27–41) | Accepted, implemented (Phase 4) |
+| [0014](0014-notifications.md) | Notifications: hosting and providers, recipients, channels, reminders, preferences, quiet hours, staff tasks, push devices, event contracts; `CLIENT_MANAGE` and no salon cancellation after the start (decisions 42–56) | Proposed (Phase 5, in review) |
 
 New ADRs: next number, same structure (Status, Date, Context, Decision, Consequences). When code changes a decision, update the ADR in the same change.

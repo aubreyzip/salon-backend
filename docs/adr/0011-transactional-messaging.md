@@ -1,6 +1,6 @@
 # ADR-0011: Messages are delivered after commit through a transactional outbox (Phase 5)
 
-- Status: Accepted (current limitations documented; outbox to be implemented in Phase 5)
+- Status: Accepted (current limitations documented; outbox to be implemented in Phase 5). ADR-0014 (proposed) details the Phase 5 design: two stages, with the listener writing notifications and a delivery worker calling providers outside transactions.
 - Date: 2026-11-03
 
 ## Context: current behavior (Phases 1–2)

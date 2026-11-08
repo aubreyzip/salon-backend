@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-11-08. Phases 0–4 are done and committed; Phase 4 is `b187eee`, and CI is green on it. Phase 5 waits for the go-ahead.
+Last updated: 2026-11-08. Phases 0–4 are done and committed; Phase 4 is `b187eee`, and CI is green on it. Phase 5 decisions are recorded in ADR-0014 (proposed, in review); implementation waits for the review and the go-ahead.
 
 Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisions: `docs/adr/` (index in `docs/adr/README.md`).
 
@@ -74,12 +74,16 @@ Deferred from Phase 0:
   - Phase 3: local `time` values were stored shifted by the JVM offset (`hibernate.jdbc.time_zone`, ADR-0006). Proven by `LocalTimeStorageIntegrationTests`, then fixed.
   - Phase 4 (found by the acceptance test): exclusion-constraint deadlocks between concurrent bookings returned 500. They are now retried (ADR-0005).
 
-## Phase 5 scope (from roadmap and ADRs)
+## Phase 5 scope (ADR-0014, proposed; ADR-0011)
 
-- Listeners for `AppointmentEvent` (`@ApplicationModuleListener`, idempotent) through the Modulith publication registry: confirmations, cancellations, reschedules, expiry, needs-attention notices, and reminders (for example to record outcomes, decision 33).
-- The after-commit outbox for email and SMS (ADR-0011): move the existing synchronous identity and invitation messages onto it, then choose real providers (D17).
-- Push notifications and device tokens, and a delivery log.
-- Open before Phase 5: vendor choice (D17), and whether customers are notified of every salon-side change.
+Decisions 42–56 were recorded on 2026-11-08 in ADR-0014 (status **Proposed**). Implementation starts after its review, including its open questions.
+
+- **Notifications:** a `notification` module listening to `AppointmentEvent`s. Messages are built from the immutable history entry (decision 56); the recipient matrix is decision 44.
+- **Channels:** persistent in-app notifications plus push, with SMS only for listed cases.
+- **Reminders and tasks:** customer reminders 24 hours ahead, preferences and quiet hours, staff outcome tasks and a daily summary.
+- **Delivery:** the two-stage outbox (listener, then a delivery worker outside transactions) with idempotency, retries, a delivery log and push devices. Existing identity and invitation messages move onto it (ADR-0011).
+- **Providers:** placeholder adapters only; production providers after due diligence (decisions 42, 43).
+- **Phase 4 follow-ups:** `CLIENT_MANAGE` for editing walk-in clients (54); no salon cancellation after the start (55).
 
 ## Work log
 
@@ -95,23 +99,26 @@ Deferred from Phase 0:
 | 2026-11-07 | Phase 4 implemented: `booking` module, extension point moved to `salons`, decision 26 checks and the override, salon availability, jobs, events; 174 new tests (680 total) | `b187eee` |
 | 2026-11-07 | Defects fixed: shifted `time` storage from `hibernate.jdbc.time_zone` (Phase 3, ADR-0006); exclusion-constraint deadlocks returned 500 (ADR-0005). `PhoneNumbers` moved to `shared` for walk-in phones | `b187eee` |
 | 2026-11-08 | Randomized-order run, docs updated (ADR-0001, 0005, 0006, 0007, 0009, 0010, 0012, 0013, index, report, CLAUDE.md), local app start | `b187eee` |
+| 2026-11-08 | Status corrected after the Phase 4 commit (docs only) | `8394900` |
+| 2026-11-08 | Phase 5 decisions 42–56 recorded in ADR-0014 (proposed), including the review of the Phase 4 event contracts | uncommitted |
 
 ## Open product decisions
 
 | Topic | Current behavior | Recommendation / when |
 |---|---|---|
-| Editing walk-in client records | Not possible (create, list, read only) | Decide who may edit (recommended: `APPOINTMENT_MANAGE_ANY` + `CLIENT_VIEW`) |
+| Editing walk-in client records | Not possible (create, list, read only) | Decided: new `CLIENT_MANAGE`, branch-scoped (ADR-0014 decision 54); roles pending review |
 | Merging duplicate client records (walk-in vs. linked) | Not merged | Later phase (ADR-0013) |
-| Salon cancelling a past, still confirmed appointment | Allowed (decision 29 says "future") | Recommended: allow only before the end; record `NO_SHOW` or `COMPLETED` otherwise |
-| Notifying customers of salon-side changes | Events are published; nothing is sent (decision 39) | Phase 5 |
-| Reminders for unrecorded outcomes (`awaitingOutcome`) | Filter only | Phase 5 notifications |
+| Salon cancelling a past, still confirmed appointment | Allowed until an outcome is recorded (deviates from decision 29) | Decided: only before the start (ADR-0014 decision 55); fix in Phase 5. Salon reschedules: pending review |
+| Notifying customers of salon-side changes | Events are published; nothing is sent (decision 39) | Decided: ADR-0014 decision 44 (recipient matrix) |
+| Reminders for unrecorded outcomes (`awaitingOutcome`) | Filter only | Decided: staff task plus daily summary (ADR-0014 decision 52); grace period pending review |
+| ADR-0014 review questions (SMS cases, defaults, quiet-hour handling, grace period, summary recipients, `CLIENT_MANAGE` roles, retention) | — | Before implementing Phase 5 |
 | Branch-scoped managers | Managers are salon-wide | Keep, unless explicitly changed (ADR-0010) |
 | Staff self-service profile | Staff cannot edit their own profile | Add a `/me` profile endpoint when clients need it |
 | Editing a salon while `PENDING_REVIEW` | Allowed | Decide before launch (admin may review a moving target) |
 | Auditing failed security attempts (e.g. wrong-account invitation use) | Not audited | Consider in Phase 8 |
 | Category taxonomy changes | Seeded by migration; no admin endpoint | Add admin editing when the list needs to change often |
 | Report decisions D6–D19 (report §13) | D6, D7, D19 accepted in ADR-0012; D8, D14, D15 in ADR-0013; D11 implemented | Revisit per phase |
-| Hosting region (KVKK), vendors, e-invoice integrator (D16, D17) | Undecided | Before Phase 5 and 7 |
+| Hosting region (KVKK), vendors, e-invoice integrator (D16, D17) | Direction set (ADR-0014 decisions 42, 43): prefer Turkey-based hosting; providers after technical and legal due diligence; FCM only a candidate | Provider selection does not block Phase 5; e-invoice before Phase 7 |
 
 ## Known limitations
 
