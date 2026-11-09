@@ -1,6 +1,6 @@
 # ADR-0014: Notifications (Phase 5 decision register)
 
-- Status: **Proposed**. Decisions 42–56 come from the 2026-11-08 review. The technical design and the questions at the end wait for review; nothing here is implemented yet.
+- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5.
 - Date: 2026-11-08
 
 ## Context
@@ -113,7 +113,7 @@ Further rules:
 - **Several instances:** the `SKIP LOCKED` claim lets them run without double sends.
 
 **Retries.**
-- **Deliveries:** exponential backoff. Proposal: 1 min, 5 min, 30 min, 2 h, 6 h; then `FAILED`, logged and counted.
+- **Deliveries:** exponential backoff: 1 min, 5 min, 30 min, 2 h, 6 h; then `FAILED`, logged and counted.
 - **Lapsed messages:** a delivery whose message no longer makes sense (for example a reminder for an appointment that has started) becomes `SKIPPED`.
 - **Listener failures:** incomplete publications are resubmitted on restart and on a schedule through Modulith (`IncompleteEventPublications`, `spring.modulith.events.republish-outstanding-events-on-restart`, `spring.modulith.events.staleness.*`). These names exist in Modulith 2.1.1; their exact behavior is to be verified when implementing.
 - **Completed publications:** purged after a retention period.
@@ -154,22 +154,24 @@ Further rules:
 - **Decision 55:** the salon cannot cancel after the start, proven with a failing test first.
 - **Decision 54:** permission tests and new cases in `TenantIsolationIntegrationTests`.
 
-## Questions for review (proposals; not decided)
+## Review answers (decisions 57–65, accepted 2026-11-10)
 
-1. **SMS cases (decision 45).** Proposal:
+The proposals were accepted unchanged.
+
+1. **(57) SMS cases (decision 45).**
    - Always SMS, in addition to push: the salon cancels, or the salon reschedules.
    - SMS fallback when the customer has no active push device: booking confirmed, booking rejected, booking expired, and the reminder (if SMS reminders are on).
    - No SMS: confirmations of the customer's own actions, and all staff and desk notifications (in-app and push only).
-2. **Default reminder preferences (decision 49).** Proposal: push on. SMS on only as a fallback for customers without a push device.
-3. **Urgent changes at night (decision 50).** Proposal:
+2. **(58) Default reminder preferences (decision 49).** Push on. SMS on only as a fallback for customers without a push device.
+3. **(59) Urgent changes at night (decision 50).**
    - Transactional appointment notifications are always created and pushed immediately.
    - An SMS during quiet hours goes out immediately only if the appointment starts before 12:00 the next day; otherwise it waits until 09:00.
-4. **A reminder due inside quiet hours (decisions 46, 50).** Proposal: move it to the last allowed time before the due time (e.g. 21:00 the evening before). If that is earlier than the booking, use the first allowed time after it.
-5. **Grace period and summary time (decision 52).** Proposal: the task appears 2 hours after the appointment's end; the summary goes out at 09:00 branch time.
-6. **Who counts as a "branch manager" for the summary.** We check permissions, not roles. Proposal: desk members (`APPOINTMENT_MANAGE_ANY` for the branch), which includes receptionists. The alternative is only salon-wide holders (owners and managers).
-7. **`CLIENT_MANAGE` roles (decision 54).** Proposal: owners, managers and receptionists. Should creating walk-in clients, today `APPOINTMENT_MANAGE_ANY` or `_OWN` so stylists can book a walk-in for themselves, stay as it is?
-8. **Decision 55 and salon reschedules.** Decision 29 says "any future appointment" for both cancelling and rescheduling. Proposal: also block salon reschedules after the start.
-9. **Retention (KVKK).** Proposal: in-app notifications kept 12 months, the delivery log 90 days, completed event publications 7 days.
+4. **(60) A reminder due inside quiet hours (decisions 46, 50).** Move it to the last allowed time before the due time (e.g. 21:00 the evening before). If that is earlier than the booking, use the first allowed time after it.
+5. **(61) Grace period and summary time (decision 52).** The task appears 2 hours after the appointment's end; the summary goes out at 09:00 branch time.
+6. **(62) Who counts as a "branch manager" for the summary.** We check permissions, not roles: desk members (`APPOINTMENT_MANAGE_ANY` for the branch), which includes receptionists.
+7. **(63) `CLIENT_MANAGE` roles (decision 54).** Owners, managers and receptionists. Creating walk-in clients keeps today's permission (`APPOINTMENT_MANAGE_ANY` or `_OWN`), so stylists can still book a walk-in for themselves.
+8. **(64) Decision 55 and salon reschedules.** Decision 29 says "any future appointment" for both cancelling and rescheduling, so salon reschedules after the start are blocked too.
+9. **(65) Retention (KVKK).** In-app notifications kept 12 months, the delivery log 90 days, completed event publications 7 days.
 
 ## Consequences
 
