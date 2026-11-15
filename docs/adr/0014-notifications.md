@@ -1,6 +1,6 @@
 # ADR-0014: Notifications (Phase 5 decision register)
 
-- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5. Implemented so far: decisions 55, 56 and 64.
+- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5. Implemented so far: decisions 55, 56 and 64 (slice 1); decision 44 and the in-app part of 45 (slice 2: every appointment change creates persistent in-app notifications for the matrix recipients; push, SMS and delivery rows follow with the delivery worker). Open: decision 44 never tells the assigned staff member about a booking request confirmed later (see `docs/project-status.md`).
 - Date: 2026-11-08
 
 ## Context

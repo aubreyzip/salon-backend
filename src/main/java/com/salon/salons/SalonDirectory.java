@@ -13,6 +13,7 @@ import com.salon.salons.domain.SalonRepository;
 import com.salon.salons.domain.SalonStatus;
 import com.salon.salons.domain.StaffMember;
 import com.salon.salons.domain.StaffMemberRepository;
+import com.salon.salons.domain.StaffStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,6 +85,39 @@ public class SalonDirectory {
 
 	public List<StaffInfo> listStaff(UUID salonId) {
 		return staff.findBySalonIdOrderByDisplayNameAsc(salonId).stream().map(SalonDirectory::info).toList();
+	}
+
+	public Optional<String> findSalonName(UUID salonId) {
+		return salons.findById(salonId).map(Salon::getName);
+	}
+
+	/**
+	 * The active, account-linked member behind a staff profile, if any (e.g. the assigned staff
+	 * member as a notification recipient, ADR-0014 decision 44). Profiles without an account and
+	 * deactivated members have none.
+	 */
+	public Optional<SalonMembership> findActiveMember(UUID salonId, UUID staffId) {
+		return staff.findByIdAndSalonId(staffId, salonId)
+			.filter(member -> member.isActive() && member.isLinked())
+			.map(SalonDirectory::membership);
+	}
+
+	/**
+	 * Active, account-linked members who hold the permission for branch-specific work in the branch
+	 * (role permission plus branch scope, as {@link TenantAccess#requireInBranch} checks it). For
+	 * example the "desk" of a branch: {@code APPOINTMENT_MANAGE_ANY} (ADR-0014 decisions 44, 62).
+	 */
+	public List<SalonMembership> findMembersWith(UUID salonId, UUID branchId, SalonPermission permission) {
+		return staff.findBySalonIdAndStatusAndUserIdIsNotNull(salonId, StaffStatus.ACTIVE)
+			.stream()
+			.map(SalonDirectory::membership)
+			.filter(member -> member.has(permission) && member.coversBranch(branchId))
+			.toList();
+	}
+
+	private static SalonMembership membership(StaffMember member) {
+		return new SalonMembership(member.getSalonId(), member.getId(), member.getUserId(), member.getRole(),
+				member.getBranchIds());
 	}
 
 	private BranchInfo info(Branch branch) {

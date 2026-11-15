@@ -1,6 +1,6 @@
 # ADR-0011: Messages are delivered after commit through a transactional outbox (Phase 5)
 
-- Status: Accepted (current limitations documented; outbox to be implemented in Phase 5). ADR-0014 (accepted) details the Phase 5 design: two stages, with the listener writing notifications and a delivery worker calling providers outside transactions.
+- Status: Accepted (current limitations documented; outbox to be implemented in Phase 5). ADR-0014 (accepted) details the Phase 5 design: two stages, with the listener writing notifications and a delivery worker calling providers outside transactions. Stage 1 exists for appointment changes (in-app notifications; publications left incomplete are resubmitted on restart via `spring.modulith.events.republish-outstanding-events-on-restart`). Scheduled resubmission, staleness monitoring, the delivery worker and the move of identity and invitation messages are still to come; until then, email and SMS stay synchronous placeholders.
 - Date: 2026-11-03
 
 ## Context: current behavior (Phases 1–2)

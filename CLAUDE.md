@@ -42,10 +42,11 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `identity`: accounts, tokens, security config. Public: `UserDirectory`, `UserSummary`.
   - `audit`: `AuditLog`, `AuditRecord`.
   - `messaging`: `EmailGateway`, `SmsGateway` (logging placeholders until providers are chosen).
-  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules, `lockSalonShared` for bookings), `BranchInfo`, `StaffInfo`, extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking), `AppointmentConflicts` (the shared 409 and override), `ConflictOverride`.
+  - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules, `lockSalonShared` for bookings, `findActiveMember`/`findMembersWith` for notification recipients), `BranchInfo`, `StaffInfo`, extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking), `AppointmentConflicts` (the shared 409 and override), `ConflictOverride`.
   - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
   - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: `BookableSlots` (one exact start, customer or salon rules).
   - `booking`: appointments, salon clients, idempotency, lifecycle and expiry jobs (ADR-0013). Public: `AppointmentEvent` (domain events, ids only, each with the `historyEntryId` of its change), `AppointmentHistory` (reads that immutable entry; ADR-0014 decision 56).
+  - `notification`: in-app notifications from domain events (ADR-0014); later push, SMS and email delivery. No public API: nothing depends on it. It depends on `booking`, `salons` and `identity`.
 - Dependencies: `salons ← catalog ← scheduling ← booking`. Lower modules must not depend on higher ones.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
@@ -104,6 +105,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 
 - Email and SMS are currently sent synchronously inside the business transaction, through logging placeholders only. Never plug a real provider into that path: it would hold DB connections and the salon row lock during network calls, and could send messages for transactions that then roll back.
 - Phase 5 moves delivery to an after-commit transactional outbox (Modulith event publication registry). Events carry ids only. Codes and tokens are minted at delivery time and stored only as hashes.
+- Appointment notifications (ADR-0014): `notification.AppointmentNotifications` is an `@ApplicationModuleListener` (after commit, async, own transaction, no network calls). It builds content from the history entry the event names, never from the current appointment; recipients follow decision 44 (`AppointmentRecipients`); notifications are unique per source, recipient and kind. Templates are `notification/messages_tr.properties` (MessageFormat: write a single quote as two). New kinds also extend `notification_kind_ck`.
 
 ## Testing rules
 
@@ -113,7 +115,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Booking tests use the `BookableSalon` fixture (`com.salon`): an approved salon open 09:00–18:00, `service`, `staff`, `member`, `bookingPolicy`, `book`/`booked`, `walkIn`, `bookAtSalon`, `at(day, "10:00")`, `DAY` (three days ahead).
 - `TenantIsolationIntegrationTests` resolves `{salon}`, `{branch}`, `{staff}`, `{service}`, `{section}`, `{offered}` (a service always offered at `{branch}`) and `{unknown}` (an id that exists nowhere) in paths and bodies. Endpoints that need an `Idempotency-Key` set the record's last flag. Matrix cases must be idempotent; deletes by id go in `deletesAreLimitedToMembersWithPermission`.
 - `TestBlockingAppointments` (`com.salon`, in the shared integration context) is a second source of blocking appointments next to booking, for appointments at arbitrary times: `add(salonId, branchId, staffId, [serviceIds,] start, blockEnd)`, `flagReason(id)`, `clear(salonId)` (call it in `@AfterEach`).
-- Booking jobs are disabled in tests (`salon.booking.jobs.enabled=false`); call `BookingJobs` directly. Check events with `@RecordApplicationEvents`.
+- Booking jobs are disabled in tests (`salon.booking.jobs.enabled=false`); call `BookingJobs` directly. Check events with `@RecordApplicationEvents`. Module listeners run asynchronously after commit: before asserting their effects, wait until `event_publication` has no row with `completion_date IS NULL` (Awaitility, see `AppointmentNotificationIntegrationTests`), and do not assert the order of rows they create.
 - Availability tests: use dates a few days ahead (default policy: 60 minutes notice, 60 days advance). The engine itself is tested without Spring (`AvailabilityEngineTest`, including DST cases with `Europe/Berlin`).
 - Race tests use `Concurrently.run(...)` and assert on the database state afterwards. Simulate email outages with `RecordingEmailGateway.failDeliveryTo(email)` (always restore it in `finally`).
 - Check database constraints by name with direct SQL (see `SalonDatabaseConstraintsIntegrationTests`).

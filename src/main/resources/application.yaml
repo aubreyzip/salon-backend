@@ -5,6 +5,11 @@ spring:
     web:
       pageable:
         max-page-size: 100
+  modulith:
+    events:
+      # Outbox (ADR-0011, ADR-0014): publications whose listener failed or was interrupted by a
+      # shutdown are resubmitted at startup. Listeners are idempotent.
+      republish-outstanding-events-on-restart: true
   jpa:
     open-in-view: false
     hibernate:

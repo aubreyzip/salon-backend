@@ -23,6 +23,9 @@ public interface StaffMemberRepository extends JpaRepository<StaffMember, UUID> 
 
 	List<StaffMember> findByUserIdAndStatus(UUID userId, StaffStatus status);
 
+	/** Members with an account, e.g. notification recipients. */
+	List<StaffMember> findBySalonIdAndStatusAndUserIdIsNotNull(UUID salonId, StaffStatus status);
+
 	long countBySalonIdAndRoleAndStatusAndUserIdIsNotNull(UUID salonId, StaffRole role, StaffStatus status);
 
 }

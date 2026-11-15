@@ -12,9 +12,9 @@
 | [0008](0008-salon-and-branch-tenant-model.md) | Salons have branches from day one | Accepted, implemented (Phase 2) |
 | [0009](0009-booking-confirmation-mode.md) | Per-branch booking confirmation, automatic by default | Accepted, implemented (Phase 4) |
 | [0010](0010-permission-scopes.md) | Permission scopes: salon-wide, assigned branches, own resources | Accepted, implemented (Phase 2) |
-| [0011](0011-transactional-messaging.md) | Messages delivered after commit through a transactional outbox | Accepted, implement in Phase 5 |
+| [0011](0011-transactional-messaging.md) | Messages delivered after commit through a transactional outbox | Accepted; Phase 5 in progress (decisions 44, 55, 56, 64 implemented) |
 | [0012](0012-catalog-and-scheduling-model.md) | Catalog, working hours, branch calendars and the availability engine; appointment rules for schedule changes, inactive branches and customer limits (decisions 21–26) | Accepted, implemented (Phase 3 and 4) |
 | [0013](0013-booking-model.md) | Booking: endpoints, staff choice, cancellation and rescheduling, expiry, outcomes, clients and privacy, salon bookings, override, events, idempotency (decisions 27–41) | Accepted, implemented (Phase 4) |
-| [0014](0014-notifications.md) | Notifications: hosting and providers, recipients, channels, reminders, preferences, quiet hours, staff tasks, push devices, event contracts; `CLIENT_MANAGE` and no salon cancellation after the start (decisions 42–65) | Accepted, implement in Phase 5 |
+| [0014](0014-notifications.md) | Notifications: hosting and providers, recipients, channels, reminders, preferences, quiet hours, staff tasks, push devices, event contracts; `CLIENT_MANAGE` and no salon cancellation after the start (decisions 42–65) | Accepted; Phase 5 in progress (decisions 44, 55, 56, 64 implemented) |
 
 New ADRs: next number, same structure (Status, Date, Context, Decision, Consequences). When code changes a decision, update the ADR in the same change.
