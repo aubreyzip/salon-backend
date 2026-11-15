@@ -17,7 +17,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Writes an appointment's history entry and publishes the matching domain event, in the
- * transaction of the change (ADR-0009, ADR-0013 decision 39).
+ * transaction of the change (ADR-0009, ADR-0013 decision 39). The event names the entry (ADR-0014
+ * decision 56).
  */
 @Component
 @Transactional(propagation = Propagation.MANDATORY)
@@ -41,29 +42,30 @@ class AppointmentRecorder {
 	 */
 	void record(Appointment appointment, HistoryAction action, AppointmentStatus fromStatus, UUID actorUserId,
 			String reason) {
-		history.save(new AppointmentHistoryEntry(appointment, action, fromStatus, actorUserId, reason, clock.instant()));
-		AppointmentEvent event = event(appointment, action);
+		AppointmentHistoryEntry entry = history.save(
+				new AppointmentHistoryEntry(appointment, action, fromStatus, actorUserId, reason, clock.instant()));
+		AppointmentEvent event = event(entry.getId(), appointment, action);
 		if (event != null) {
 			events.publishEvent(event);
 		}
 	}
 
-	private static AppointmentEvent event(Appointment a, HistoryAction action) {
+	private static AppointmentEvent event(UUID entry, Appointment a, HistoryAction action) {
 		UUID id = a.getId();
 		UUID salonId = a.getSalonId();
 		UUID branchId = a.getBranchId();
 		UUID customer = a.getCustomerUserId();
 		return switch (action) {
-			case BOOKED -> new AppointmentEvent.Booked(id, salonId, branchId, customer);
-			case CONFIRMED -> new AppointmentEvent.Confirmed(id, salonId, branchId, customer);
-			case REJECTED -> new AppointmentEvent.Rejected(id, salonId, branchId, customer);
-			case EXPIRED -> new AppointmentEvent.Expired(id, salonId, branchId, customer);
-			case CANCELLED -> new AppointmentEvent.Cancelled(id, salonId, branchId, customer,
+			case BOOKED -> new AppointmentEvent.Booked(entry, id, salonId, branchId, customer);
+			case CONFIRMED -> new AppointmentEvent.Confirmed(entry, id, salonId, branchId, customer);
+			case REJECTED -> new AppointmentEvent.Rejected(entry, id, salonId, branchId, customer);
+			case EXPIRED -> new AppointmentEvent.Expired(entry, id, salonId, branchId, customer);
+			case CANCELLED -> new AppointmentEvent.Cancelled(entry, id, salonId, branchId, customer,
 					a.getCancelledBy() == CancelledBy.CUSTOMER);
-			case RESCHEDULED -> new AppointmentEvent.Rescheduled(id, salonId, branchId, customer);
-			case COMPLETED -> new AppointmentEvent.Completed(id, salonId, branchId, customer);
-			case NO_SHOW -> new AppointmentEvent.NoShow(id, salonId, branchId, customer);
-			case ATTENTION_FLAGGED -> new AppointmentEvent.NeedsAttention(id, salonId, branchId, customer);
+			case RESCHEDULED -> new AppointmentEvent.Rescheduled(entry, id, salonId, branchId, customer);
+			case COMPLETED -> new AppointmentEvent.Completed(entry, id, salonId, branchId, customer);
+			case NO_SHOW -> new AppointmentEvent.NoShow(entry, id, salonId, branchId, customer);
+			case ATTENTION_FLAGGED -> new AppointmentEvent.NeedsAttention(entry, id, salonId, branchId, customer);
 			case ATTENTION_RESOLVED -> null; // internal bookkeeping, nobody to notify
 		};
 	}

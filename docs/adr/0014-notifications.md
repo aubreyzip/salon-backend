@@ -1,6 +1,6 @@
 # ADR-0014: Notifications (Phase 5 decision register)
 
-- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5.
+- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5. Implemented so far: decisions 55, 56 and 64.
 - Date: 2026-11-08
 
 ## Context

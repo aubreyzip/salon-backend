@@ -212,6 +212,23 @@ class SalonBookingIntegrationTests {
 			.andExpect(jsonPath("$.content[*].id").value(not(hasItem(id.toString()))));
 	}
 
+	/** ADR-0014 decisions 55 and 64: after the start, the salon records the outcome instead. */
+	@Test
+	void theSalonCannotCancelOrRescheduleAnAppointmentThatHasStarted() throws Exception {
+		UUID id = UUID.fromString(read(salon.bookAtSalon(salon.owner, walkIn, ayse, at(DAY, "10:00"), cut)
+			.andExpect(status().isCreated()), "$.id"));
+		jdbc.update("UPDATE appointment SET start_at = now() - interval '10 minutes', end_at = now() + interval "
+				+ "'50 minutes', block_end_at = now() + interval '50 minutes' WHERE id = ?", id);
+
+		post(id, "cancel", "{\"reason\": \"Too late\"}").andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("APPOINTMENT_ALREADY_STARTED"));
+		api.postWithKey(salon.owner.accessToken(), salon.path + "/appointments/" + id + "/reschedule",
+				"{\"start\": \"" + at(DAY, "11:00") + "\"}")
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.code").value("APPOINTMENT_ALREADY_STARTED"));
+		post(id, "no-show", null).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("NO_SHOW"));
+	}
+
 	@Test
 	void theHistoryRecordsEveryChangeWithItsActor() throws Exception {
 		salon.bookingPolicy(false, 60, 120, 120);

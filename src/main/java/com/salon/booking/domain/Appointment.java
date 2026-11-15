@@ -19,6 +19,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import org.hibernate.annotations.BatchSize;
 
 /**
@@ -78,6 +79,19 @@ public class Appointment extends BaseEntity {
 	private Instant createdAt;
 
 	private Instant updatedAt;
+
+	/**
+	 * The slot before the last {@link #reschedule} in this transaction, for its history entry
+	 * (ADR-0014 decision 56). Not persisted.
+	 */
+	@Transient
+	private Instant previousStartAt;
+
+	@Transient
+	private Instant previousEndAt;
+
+	@Transient
+	private UUID previousStaffId;
 
 	@ElementCollection(fetch = FetchType.EAGER)
 	@CollectionTable(name = "appointment_item", joinColumns = @JoinColumn(name = "appointment_id"))
@@ -141,6 +155,7 @@ public class Appointment extends BaseEntity {
 		if (!status.isBlocking()) {
 			throw BookingErrors.invalidTransition("Only pending or confirmed appointments can be cancelled.");
 		}
+		requireNotStarted(now);
 		status = AppointmentStatus.CANCELLED;
 		cancelledBy = by;
 		statusReason = reason;
@@ -172,6 +187,10 @@ public class Appointment extends BaseEntity {
 		if (!status.isBlocking()) {
 			throw BookingErrors.invalidTransition("Only pending or confirmed appointments can be rescheduled.");
 		}
+		requireNotStarted(now);
+		previousStartAt = startAt;
+		previousEndAt = endAt;
+		previousStaffId = staffId;
 		schedule(newStaffId, newStart, newItems, newBufferMinutes);
 		if (newConfirmationDeadline != null) {
 			status = AppointmentStatus.PENDING;
@@ -241,6 +260,16 @@ public class Appointment extends BaseEntity {
 		if (status != expected) {
 			throw BookingErrors.invalidTransition(
 					"A " + status.name().toLowerCase(Locale.ROOT) + " appointment cannot be " + action + ".");
+		}
+	}
+
+	/**
+	 * Cancelling and rescheduling end at the start (decision 29, ADR-0014 decisions 55 and 64); after
+	 * it, staff record the outcome.
+	 */
+	public void requireNotStarted(Instant now) {
+		if (!now.isBefore(startAt)) {
+			throw BookingErrors.alreadyStarted();
 		}
 	}
 
@@ -333,6 +362,18 @@ public class Appointment extends BaseEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	public Instant getPreviousStartAt() {
+		return previousStartAt;
+	}
+
+	public Instant getPreviousEndAt() {
+		return previousEndAt;
+	}
+
+	public UUID getPreviousStaffId() {
+		return previousStaffId;
 	}
 
 	public List<AppointmentItem> getItems() {

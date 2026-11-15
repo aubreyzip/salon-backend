@@ -65,7 +65,7 @@ Principle from the review: an appointment is a commitment between a customer and
 - A `DELETE` or bodiless `POST` with an optional JSON body is unusual; clients that cannot send it can't override those four changes. Revisit if a client needs a query parameter instead.
 - Duplicate walk-in records and account-linked records are not merged yet.
 - Walk-in client records cannot be edited yet. Only creating, listing and reading exist. ADR-0014 decision 54 adds `CLIENT_MANAGE`.
-- The salon may cancel a past, still `CONFIRMED` appointment, which deviates from decision 29 ("future"). ADR-0014 decision 55 restricts it to before the start; afterwards staff record `NO_SHOW` or `COMPLETED`. Salon reschedules are blocked after the start too (decision 64).
-- Events carry ids only. ADR-0014 decision 56 adds the history entry id, so notifications describe the state at the time of the change.
+- Phase 4 let the salon cancel a past, still `CONFIRMED` appointment, deviating from decision 29 ("future"). Fixed in Phase 5 (ADR-0014 decisions 55, 64): cancelling and rescheduling end at the start (`409 APPOINTMENT_ALREADY_STARTED`); afterwards staff record `NO_SHOW` or `COMPLETED`.
+- Events carry ids only. Since Phase 5 they include the history entry id (ADR-0014 decision 56), and `appointment_history` is append-only (database trigger), so notifications describe the state at the time of the change.
 - Moving an appointment to another branch is not supported. Cancel and book again.
 - While building this, a Phase 3 defect was found and fixed: `time` values were shifted by the JVM's offset (ADR-0006).

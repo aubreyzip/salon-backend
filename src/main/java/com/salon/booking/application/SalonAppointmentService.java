@@ -178,7 +178,7 @@ public class SalonAppointmentService {
 		return executor.read(() -> view(appointments.findByIdAndSalonId(id, salonId).orElseThrow()));
 	}
 
-	/** Any future pending or confirmed appointment, at any time; the status is kept (decision 30). */
+	/** Any pending or confirmed appointment before its start (ADR-0014 decision 64); the status is kept (decision 30). */
 	public SalonAppointmentView reschedule(UUID salonId, UUID appointmentId, UUID userId, String idempotencyKey,
 			Reschedule command) {
 		UUID id = executor.execute(
@@ -199,7 +199,7 @@ public class SalonAppointmentService {
 				appointment -> appointment.reject(reason, clock.instant()));
 	}
 
-	/** At any time; the reason is required and shown to the customer (decision 34). */
+	/** Until the start (ADR-0014 decision 55); the reason is required and shown to the customer (decision 34). */
 	@Transactional
 	public SalonAppointmentView cancel(UUID salonId, UUID appointmentId, UUID userId, String reason) {
 		return change(salonId, appointmentId, userId, HistoryAction.CANCELLED, reason,
@@ -287,6 +287,7 @@ public class SalonAppointmentService {
 
 	private UUID rescheduleOnce(UUID salonId, UUID appointmentId, UUID userId, Reschedule command, Attempt attempt) {
 		Appointment appointment = manage(salonId, appointmentId, userId);
+		appointment.requireNotStarted(clock.instant());
 		UUID staffId = command.staffId() != null ? command.staffId() : appointment.getStaffId();
 		if (!staffId.equals(appointment.getStaffId())) {
 			checkBook(salonId, appointment.getBranchId(), staffId, userId);

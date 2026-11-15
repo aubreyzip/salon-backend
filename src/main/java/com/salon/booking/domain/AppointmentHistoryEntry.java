@@ -11,7 +11,8 @@ import jakarta.persistence.Table;
 
 /**
  * One entry of an appointment's history (ADR-0009): every status change, reschedule and attention
- * flag, with who did it ({@code null} for the system, e.g. expiry).
+ * flag, with who did it ({@code null} for the system, e.g. expiry). Append-only: it is the snapshot
+ * notifications describe (ADR-0014 decision 56), so it is never updated.
  */
 @Entity
 @Table(name = "appointment_history")
@@ -36,7 +37,15 @@ public class AppointmentHistoryEntry extends BaseEntity {
 
 	private Instant startAt;
 
+	private Instant endAt;
+
 	private UUID staffId;
+
+	private Instant previousStartAt;
+
+	private Instant previousEndAt;
+
+	private UUID previousStaffId;
 
 	private Instant occurredAt;
 
@@ -57,7 +66,11 @@ public class AppointmentHistoryEntry extends BaseEntity {
 		this.actorUserId = actorUserId;
 		this.reason = reason;
 		this.startAt = appointment.getStartAt();
+		this.endAt = appointment.getEndAt();
 		this.staffId = appointment.getStaffId();
+		this.previousStartAt = appointment.getPreviousStartAt();
+		this.previousEndAt = appointment.getPreviousEndAt();
+		this.previousStaffId = appointment.getPreviousStaffId();
 		this.occurredAt = now;
 	}
 
@@ -87,6 +100,30 @@ public class AppointmentHistoryEntry extends BaseEntity {
 
 	public UUID getStaffId() {
 		return staffId;
+	}
+
+	public UUID getAppointmentId() {
+		return appointmentId;
+	}
+
+	public UUID getSalonId() {
+		return salonId;
+	}
+
+	public Instant getEndAt() {
+		return endAt;
+	}
+
+	public Instant getPreviousStartAt() {
+		return previousStartAt;
+	}
+
+	public Instant getPreviousEndAt() {
+		return previousEndAt;
+	}
+
+	public UUID getPreviousStaffId() {
+		return previousStaffId;
 	}
 
 	public Instant getOccurredAt() {

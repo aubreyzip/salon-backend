@@ -65,6 +65,11 @@ public final class BookingErrors {
 				"The outcome can be recorded once the appointment has started.");
 	}
 
+	public static ApiException alreadyStarted() {
+		return new ApiException(HttpStatus.CONFLICT, "APPOINTMENT_ALREADY_STARTED",
+				"The appointment has started. Record the outcome instead.");
+	}
+
 	public static ApiException duplicateService() {
 		return new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_SERVICE", "Each service can be booked only once.");
 	}

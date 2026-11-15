@@ -45,7 +45,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `salons` (package `com.salon.salons`): salons, branches, staff and roles, invitations, provinces. Public: `TenantAccess`, `SalonMembership`, `StaffRole`, `SalonPermission`, `PermissionScope`, `SalonDirectory` (salon, branch and staff facts plus `lockSalon`/`ensureModifiable` for other modules, `lockSalonShared` for bookings), `BranchInfo`, `StaffInfo`, extension point `BlockingAppointments` / `BlockingAppointment` (implemented by booking), `AppointmentConflicts` (the shared 409 and override), `ConflictOverride`.
   - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
   - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: `BookableSlots` (one exact start, customer or salon rules).
-  - `booking`: appointments, salon clients, idempotency, lifecycle and expiry jobs (ADR-0013). Public: `AppointmentEvent` (domain events, ids only).
+  - `booking`: appointments, salon clients, idempotency, lifecycle and expiry jobs (ADR-0013). Public: `AppointmentEvent` (domain events, ids only, each with the `historyEntryId` of its change), `AppointmentHistory` (reads that immutable entry; ADR-0014 decision 56).
 - Dependencies: `salons ← catalog ← scheduling ← booking`. Lower modules must not depend on higher ones.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.
@@ -57,7 +57,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
 - Booking (ADR-0013):
   - Lock order is the idempotency key, then the customer lock (`CustomerLocks`), then the salon row `FOR SHARE`. Never take them in another order.
   - Bookings and reschedules run through `BookingExecutor` (idempotency, deadlock retries, constraint translation). The exclusion constraints are the final arbiter.
-  - Status changes are `Appointment` methods; every change is recorded with `AppointmentRecorder` (history + event).
+  - Status changes are `Appointment` methods; every change is recorded with `AppointmentRecorder` (history + event). History entries are append-only (a trigger rejects `UPDATE`); consumers describe a change from its entry, never from the current appointment row. Event records change additively only.
 
 ## API conventions
 
