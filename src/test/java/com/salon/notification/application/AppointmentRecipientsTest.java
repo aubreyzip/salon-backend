@@ -59,11 +59,17 @@ class AppointmentRecipientsTest {
 	}
 
 	@Test
-	void salonDecisionsAndExpiryGoToTheCustomerOnly() {
+	void aConfirmedRequestAlsoReachesTheAssignedStaffMember() {
+		// Decision 66 (amends 44): the stylist learns about a request once it is confirmed.
 		var ids = ids();
 		assertThat(targets(new AppointmentEvent.Confirmed(ids[0], ids[1], ids[2], ids[3], CUSTOMER),
 				change("CONFIRMED", "CONFIRMED", MEMBER)))
-			.containsExactly(target(Party.CUSTOMER, BOOKING_CONFIRMED));
+			.containsExactly(target(Party.CUSTOMER, BOOKING_CONFIRMED), target(Party.STAFF, STAFF_NEW_APPOINTMENT));
+	}
+
+	@Test
+	void rejectionAndExpiryGoToTheCustomerOnly() {
+		var ids = ids();
 		assertThat(targets(new AppointmentEvent.Rejected(ids[0], ids[1], ids[2], ids[3], CUSTOMER),
 				change("REJECTED", "REJECTED", MEMBER)))
 			.containsExactly(target(Party.CUSTOMER, BOOKING_REJECTED));

@@ -127,7 +127,8 @@ class AppointmentNotificationIntegrationTests {
 
 		assertThat(kinds(customer)).containsExactlyInAnyOrder(BOOKING_REQUESTED, BOOKING_CONFIRMED, CANCELLED_BY_SALON);
 		assertThat(kinds(desk)).containsExactly(DESK_CONFIRMATION_NEEDED);
-		assertThat(kinds(ayseUser)).isEmpty();
+		// Told about the confirmed request (decision 66), not about her own cancellation.
+		assertThat(kinds(ayseUser)).containsExactly(STAFF_NEW_APPOINTMENT);
 
 		Notification cancelled = only(customer, CANCELLED_BY_SALON);
 		assertThat(cancelled.getReason()).isEqualTo("Hastalık nedeniyle");
@@ -155,7 +156,8 @@ class AppointmentNotificationIntegrationTests {
 		assertThat(moved).extracting(Notification::getStartAt)
 			.containsExactlyInAnyOrder(at(DAY, "11:00"), at(DAY, "12:00"));
 
-		// The previous staff member hears that it moved, then that it left her book; the new one gets it.
+		// Ayşe hears about the confirmed booking, that it moved, then that it left her book; Mehmet gets it.
+		assertThat(only(ayseUser, STAFF_NEW_APPOINTMENT).getStartAt()).isEqualTo(at(DAY, "10:00"));
 		assertThat(only(ayseUser, STAFF_APPOINTMENT_RESCHEDULED).getStartAt()).isEqualTo(at(DAY, "11:00"));
 		Notification reassigned = only(ayseUser, STAFF_APPOINTMENT_REASSIGNED);
 		assertThat(reassigned.getPreviousStartAt()).isEqualTo(at(DAY, "11:00"));

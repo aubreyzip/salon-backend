@@ -46,7 +46,7 @@ Binding decisions: `docs/adr/` (index: `docs/adr/README.md`). Read the relevant 
   - `catalog`: service categories (platform taxonomy), sections, services, branch offerings, staff skills (ADR-0012). Public: `ServiceCatalog`, `BookingRequirements`.
   - `scheduling`: opening hours, special days, closures, working hours, time off, availability engine (ADR-0012). Public: `BookableSlots` (one exact start, customer or salon rules).
   - `booking`: appointments, salon clients, idempotency, lifecycle and expiry jobs (ADR-0013). Public: `AppointmentEvent` (domain events, ids only, each with the `historyEntryId` of its change), `AppointmentHistory` (reads that immutable entry; ADR-0014 decision 56).
-  - `notification`: in-app notifications from domain events (ADR-0014); later push, SMS and email delivery. No public API: nothing depends on it. It depends on `booking`, `salons` and `identity`.
+  - `notification`: in-app notifications from domain events and `/me/notifications` (ADR-0014); later push, SMS and email delivery. No public API: nothing depends on it. Notifications are user-scoped: load them by `(id, userId)`. It depends on `booking`, `salons` and `identity`.
 - Dependencies: `salons ← catalog ← scheduling ← booking`. Lower modules must not depend on higher ones.
 - Entities extend `BaseEntity` (UUIDv7 id assigned on construction, `@Version`). Inject `Clock` for "now".
 - Business errors: throw `ApiException(status, CODE, detail)`. Services that must persist state before failing (failed logins, code attempts) use `@Transactional(noRollbackFor = ApiException.class)`.

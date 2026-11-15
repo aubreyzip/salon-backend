@@ -25,7 +25,7 @@ import static com.salon.notification.domain.NotificationKind.STAFF_APPOINTMENT_R
 import static com.salon.notification.domain.NotificationKind.STAFF_NEW_APPOINTMENT;
 
 /**
- * The recipient matrix of ADR-0014 decision 44, as a pure function of an event and the history
+ * The recipient matrix of ADR-0014 decision 44 (amended by decision 66), as a pure function of an event and the history
  * entry it names. It says which party gets which kind; {@link AppointmentNotifications} turns
  * parties into users (active accounts and memberships, without the actor).
  */
@@ -74,7 +74,11 @@ final class AppointmentRecipients {
 					add(targets, Party.STAFF, STAFF_NEW_APPOINTMENT);
 				}
 			}
-			case AppointmentEvent.Confirmed confirmed -> add(targets, Party.CUSTOMER, BOOKING_CONFIRMED);
+			case AppointmentEvent.Confirmed confirmed -> {
+				add(targets, Party.CUSTOMER, BOOKING_CONFIRMED);
+				// Decision 66 (amends 44): the request now holds a place in the staff member's book.
+				add(targets, Party.STAFF, STAFF_NEW_APPOINTMENT);
+			}
 			case AppointmentEvent.Rejected rejected -> add(targets, Party.CUSTOMER, BOOKING_REJECTED);
 			case AppointmentEvent.Expired expired -> add(targets, Party.CUSTOMER, BOOKING_EXPIRED);
 			case AppointmentEvent.Cancelled cancelled -> {

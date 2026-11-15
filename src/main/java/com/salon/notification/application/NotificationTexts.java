@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.salon.notification.domain.Notification;
@@ -25,6 +26,8 @@ import org.springframework.stereotype.Component;
 public class NotificationTexts {
 
 	public static final Locale TURKISH = Locale.forLanguageTag("tr");
+
+	private static final ZoneId DEFAULT_ZONE = ZoneId.of("Europe/Istanbul");
 
 	private final MessageSource messages;
 
@@ -47,11 +50,15 @@ public class NotificationTexts {
 	public record Place(String salonName, String branchName, ZoneId timeZone) {
 	}
 
+	/** The salon and branch of a notification; empty names for notifications without them. */
 	public Place place(UUID salonId, UUID branchId) {
+		if (salonId == null) {
+			return new Place("", "", DEFAULT_ZONE);
+		}
 		String salonName = salons.findSalonName(salonId).orElse("");
-		return salons.findBranch(salonId, branchId)
+		return (branchId == null ? Optional.<BranchInfo>empty() : salons.findBranch(salonId, branchId))
 			.map((BranchInfo branch) -> new Place(salonName, branch.name(), branch.timeZone()))
-			.orElse(new Place(salonName, "", ZoneId.of("Europe/Istanbul")));
+			.orElse(new Place(salonName, "", DEFAULT_ZONE));
 	}
 
 	public Text render(Notification notification, Locale locale) {

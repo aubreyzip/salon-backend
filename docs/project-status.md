@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-11-15. Phases 0–4 are done and committed; Phase 4 is `b187eee`, and CI is green on it. Phase 5 decisions are in ADR-0014, accepted 2026-11-10 (decisions 42–65); Phase 5 is in progress: slice 1 is `d285bec`; slice 2 (in-app notifications) is uncommitted.
+Last updated: 2026-11-15. Phases 0–4 are done and committed; Phase 4 is `b187eee`, and CI is green on it. Phase 5 decisions are in ADR-0014, accepted 2026-11-10 (decisions 42–65; 66 added 2026-11-15); Phase 5 is in progress: slice 1 is `d285bec`; slice 2 (in-app notifications) is `d8635f9`; decision 66 and slice 3 (in-app API) are uncommitted.
 
 Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisions: `docs/adr/` (index in `docs/adr/README.md`).
 
@@ -13,7 +13,7 @@ Roadmap: `docs/architecture/initial-architecture-report.md` §14. Binding decisi
 | 2. Salons and access (salons, branches, staff and roles, invitations, reactivation, review lifecycle, tenant isolation, branch scopes) | Done | `adc074b` |
 | 3. Catalog and scheduling (services, sections, offerings, staff skills, opening hours, special days, closures, working hours, time off, availability engine, appointment-conflict boundary) | Done (506 tests), ADR-0012 | `47e8537`, `ee1db7c`, `a088dca` |
 | 4. Booking (appointments, idempotency, lifecycle and expiry, salon clients, salon bookings, conflict override, events) | Done (680 tests, randomized-order run green), ADR-0013 | `b187eee` |
-| **5. Notifications (outbox, real providers)** | **In progress: slices 1 (booking follow-ups, event snapshots) and 2 (in-app notifications) done** | `d285bec` (slice 1) |
+| **5. Notifications (outbox, real providers)** | **In progress: slices 1 (booking follow-ups, event snapshots), 2 (in-app notifications) and 3 (in-app API) done** | `d285bec` (slice 1), `d8635f9` (slice 2) |
 | 6. Discovery, favorites, reviews, media | Planned | — |
 | 7. Billing (iyzico, e-invoice) | Planned | — |
 | 8. Production hardening | Planned | — |
@@ -87,6 +87,8 @@ ADR-0014 was accepted on 2026-11-10: decisions 42–56 plus the review answers 5
 
 Done in slice 2: the `notification` module with an after-commit listener (`AppointmentNotifications`) that creates in-app notifications from the history entry (recipient matrix in `AppointmentRecipients`, idempotent per source, recipient and kind), Turkish templates (`notification/messages_tr.properties`, rendered by `NotificationTexts`), and the `salons` recipient queries. `notification_delivery` rows come with the delivery worker, because the channel choice needs devices and preferences.
 
+Done in slice 3: `GET /api/v1/me/notifications` (paged, newest first, rendered texts), `GET /api/v1/me/notifications/unread-count`, `POST /api/v1/me/notifications/{id}/read` (idempotent, user-scoped).
+
 ## Work log
 
 | Date | Work | Commit |
@@ -105,7 +107,8 @@ Done in slice 2: the `notification` module with an after-commit listener (`Appoi
 | 2026-11-08 | Phase 5 decisions 42–56 recorded in ADR-0014 (proposed), including the review of the Phase 4 event contracts | `7d94fb3` |
 | 2026-11-10 | ADR-0014 accepted; review answers recorded as decisions 57–65 | `d285bec` |
 | 2026-11-10 | Phase 5 slice 1: salon cancel and reschedule end at the start (decisions 55, 64; defect proven by a failing test first); events carry `historyEntryId`, history entries gain the end and previous slot and are append-only (trigger), public `booking.AppointmentHistory` (decision 56); 3 new tests (683 total) | `d285bec` |
-| 2026-11-15 | Phase 5 slice 2: `notification` module; after-commit listener creates in-app notifications from the history entry for the decision 44 recipients (actor excluded, active accounts and memberships only, idempotent); Turkish templates; `SalonDirectory.findActiveMember`/`findMembersWith`; resubmission on restart enabled. Open question raised: staff not told about confirmed booking requests. 18 new tests (701 total), randomized-order run green | uncommitted |
+| 2026-11-15 | Phase 5 slice 2: `notification` module; after-commit listener creates in-app notifications from the history entry for the decision 44 recipients (actor excluded, active accounts and memberships only, idempotent); Turkish templates; `SalonDirectory.findActiveMember`/`findMembersWith`; resubmission on restart enabled. Gap found in decision 44 (staff not told about confirmed requests), decided as 66. 18 new tests (701 total), randomized-order run green | `d8635f9` |
+| 2026-11-15 | Decision 66 (staff hear about confirmed requests; tests changed first, then the matrix). Phase 5 slice 3: `/me/notifications` list, unread count, mark as read; read time stored at database precision (the first response showed nanoseconds, later reads microseconds, caught by a test). 5 new tests (706 total), randomized-order run green | uncommitted |
 
 ## Open product decisions
 
@@ -115,7 +118,7 @@ Done in slice 2: the `notification` module with an after-commit listener (`Appoi
 | Merging duplicate client records (walk-in vs. linked) | Not merged | Later phase (ADR-0013) |
 | Salon cancelling a past, still confirmed appointment | Allowed until an outcome is recorded (deviates from decision 29) | Decided: only before the start (ADR-0014 decision 55); salon reschedules too (64); fixed in Phase 5 (`409 APPOINTMENT_ALREADY_STARTED`) |
 | Notifying customers of salon-side changes | In-app notifications per the recipient matrix (Phase 5 slice 2); no push, SMS or email yet | Decided: ADR-0014 decision 44; external channels in Phase 5 |
-| Stylist not told about a confirmed booking request | Decision 44 as written: a customer booking that waits for confirmation notifies the customer and the desk; the later confirmation notifies only the customer. The assigned staff member never hears about it (immediately confirmed bookings do notify them) | Recommendation: also send `STAFF_NEW_APPOINTMENT` when a `PENDING` appointment is confirmed. Needs a decision (amends decision 44) |
+| Stylist not told about a confirmed booking request | Fixed: the assigned staff member gets "New booking" when the salon confirms a request | Decided: ADR-0014 decision 66 (amends 44), 2026-11-15 |
 | Reminders for unrecorded outcomes (`awaitingOutcome`) | Filter only | Decided: staff task plus daily summary (ADR-0014 decisions 52, 61: task 2 h after the end, summary at 09:00); Phase 5 |
 | Branch-scoped managers | Managers are salon-wide | Keep, unless explicitly changed (ADR-0010) |
 | Staff self-service profile | Staff cannot edit their own profile | Add a `/me` profile endpoint when clients need it |

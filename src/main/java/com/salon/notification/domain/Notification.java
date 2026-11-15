@@ -1,6 +1,7 @@
 package com.salon.notification.domain;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import com.salon.shared.BaseEntity;
@@ -68,6 +69,16 @@ public class Notification extends BaseEntity {
 		notification.previousStartAt = kind.showsPreviousStart() ? previousStartAt : null;
 		notification.reason = kind.showsReason() ? reason : null;
 		return notification;
+	}
+
+	/**
+	 * Marks it read; reading it again keeps the first time. Stored with the database's precision
+	 * (microseconds), so the response that sets it shows the same value as later reads.
+	 */
+	public void markRead(Instant now) {
+		if (readAt == null) {
+			readAt = now.truncatedTo(ChronoUnit.MICROS);
+		}
 	}
 
 	public UUID getUserId() {

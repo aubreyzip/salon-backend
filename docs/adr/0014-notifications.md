@@ -1,6 +1,6 @@
 # ADR-0014: Notifications (Phase 5 decision register)
 
-- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. To be implemented in Phase 5. Implemented so far: decisions 55, 56 and 64 (slice 1); decision 44 and the in-app part of 45 (slice 2: every appointment change creates persistent in-app notifications for the matrix recipients; push, SMS and delivery rows follow with the delivery worker). Open: decision 44 never tells the assigned staff member about a booking request confirmed later (see `docs/project-status.md`).
+- Status: **Accepted** (2026-11-10). Decisions 42–56 come from the 2026-11-08 review. The review answers were accepted as proposed on 2026-11-10 and are decisions 57–65. Decision 66 was added on 2026-11-15. To be implemented in Phase 5. Implemented so far: decisions 55, 56 and 64 (slice 1); decision 44 and the in-app part of 45 (slice 2: every appointment change creates persistent in-app notifications for the matrix recipients; push, SMS and delivery rows follow with the delivery worker). Decision 66 (staff hear about confirmed requests) amends 44 and is implemented. Slice 3: the in-app API (`GET /me/notifications`, `GET /me/notifications/unread-count`, `POST /me/notifications/{id}/read`).
 - Date: 2026-11-08
 
 ## Context
@@ -81,7 +81,8 @@ What may be read as current state:
 | Booked by customer, `PENDING` | Request received | — | Confirmation needed (action) |
 | Booked by customer, `CONFIRMED` | Booking confirmed | New booking | — |
 | Booked by salon (linked customer) | Salon booked you | New booking | — |
-| Confirmed / Rejected (with reason) | Yes | — | — |
+| Confirmed (by the salon) | Yes | New booking (decision 66) | — |
+| Rejected (with reason) | Yes | — | — |
 | Expired | Yes | — | — |
 | Cancelled by customer | Confirmation of own action | Yes | — |
 | Cancelled by salon (with reason) | Yes | Yes | — |
@@ -135,7 +136,7 @@ Further rules:
 **Existing messages move to the outbox (ADR-0011).** Verification codes, password reset codes, phone OTPs and invitations move to the outbox, with secrets minted at delivery time. The HTTP status codes stay as they are.
 
 **API (additive).**
-- `GET /me/notifications` (paged, with an unread count), `POST /me/notifications/{id}/read`.
+- `GET /me/notifications` (paged, newest first, texts rendered in Turkish), `GET /me/notifications/unread-count` (implemented as its own endpoint, so the list keeps the standard `Page` shape and badges stay cheap), `POST /me/notifications/{id}/read` (idempotent; other users' notifications are `404 NOTIFICATION_NOT_FOUND`).
 - `GET`/`PUT /me/notification-preferences`.
 - `PUT /me/devices` (register or refresh: application id, platform, token), `DELETE /me/devices/{id}`. A token is unique per application id. Re-registering it moves it to the signed-in user, which covers shared devices. Tokens the provider reports as invalid are deactivated.
 - Staff tasks appear in their in-app notifications.
@@ -172,6 +173,10 @@ The proposals were accepted unchanged.
 7. **(63) `CLIENT_MANAGE` roles (decision 54).** Owners, managers and receptionists. Creating walk-in clients keeps today's permission (`APPOINTMENT_MANAGE_ANY` or `_OWN`), so stylists can still book a walk-in for themselves.
 8. **(64) Decision 55 and salon reschedules.** Decision 29 says "any future appointment" for both cancelling and rescheduling, so salon reschedules after the start are blocked too.
 9. **(65) Retention (KVKK).** In-app notifications kept 12 months, the delivery log 90 days, completed event publications 7 days.
+
+## Amendment (decision 66, accepted 2026-11-15)
+
+**(66) Staff hear about confirmed requests (amends decision 44).** Found while implementing the matrix: a customer booking that waits for confirmation notified only the customer and the desk, and the later confirmation only the customer, so the assigned staff member never learned about it. When the salon confirms a `PENDING` appointment, the assigned staff member now also gets "New booking" (unless they confirmed it themselves).
 
 ## Consequences
 
